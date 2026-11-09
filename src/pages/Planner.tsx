@@ -12,6 +12,9 @@ import FigureSegmented from "../components/FigureSegmented";
 import { useCanvasHeight } from "../lib/useFigure";
 import type { FigureId } from "../types";
 
+/** localStorage key for the "Legend" export tick box (a per-browser convenience). */
+const LEGEND_PREF_KEY = "seegmap.exportLegend";
+
 export default function Planner() {
   const electrodes = useStore((s) => s.electrodes);
   const sketches = useStore((s) => s.sketches);
@@ -127,6 +130,22 @@ export default function Planner() {
     resizingRef.current = null;
   };
 
+  const [includeLegend, setIncludeLegendState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(LEGEND_PREF_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setIncludeLegend = (v: boolean) => {
+    setIncludeLegendState(v);
+    try {
+      localStorage.setItem(LEGEND_PREF_KEY, v ? "1" : "0");
+    } catch {
+      // Storage unavailable (private window etc.): the choice lasts for this page only.
+    }
+  };
+
   const baseFilename = () => (patientLabel.trim() ? patientLabel.trim().replace(/\s+/g, "_") : "seegmap_export");
 
   const runExport = async (kind: "png" | "pdf" | "pptx") => {
@@ -134,7 +153,7 @@ export default function Planner() {
     setBusy(kind);
     try {
       if (kind === "png") {
-        await exportWorkspacePng(canvasWrapRef.current, baseFilename());
+        await exportWorkspacePng(canvasWrapRef.current, baseFilename(), includeLegend ? electrodes : undefined);
       } else if (kind === "pdf") {
         await exportWorkspacePdf({
           node: canvasWrapRef.current,
@@ -142,6 +161,7 @@ export default function Planner() {
           patientLabel,
           planNotes,
           filename: baseFilename(),
+          includeLegend,
         });
       } else {
         await exportWorkspacePptx({
@@ -271,6 +291,18 @@ export default function Planner() {
           <button className="btn btn-sm" onClick={handleSaveSeegmap}>
             Save .seegmap
           </button>
+          <label
+            title="Draw a table of electrode names, entries and targets beside the figure in PNG and PDF exports"
+            style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            <input
+              type="checkbox"
+              checked={includeLegend}
+              onChange={(e) => setIncludeLegend(e.target.checked)}
+              style={{ width: 14, height: 14, cursor: "pointer" }}
+            />
+            Legend
+          </label>
           <button className="btn btn-sm" disabled={busy !== null} onClick={() => runExport("png")}>
             {busy === "png" ? "Exporting…" : "Export PNG"}
           </button>
