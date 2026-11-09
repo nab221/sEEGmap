@@ -298,8 +298,11 @@ export async function exportWorkspacePptx({
         addTrajectoryLine(slide, ls, le, e.color);
         addDot(slide, ls, e.color);
         if (targetVisible) addTargetX(slide, le, e.color);
+        const mt = e.medialTarget && targetVisible ? toSlide(e.medialTarget) : null;
+        if (mt) addTargetX(slide, mt, e.color);
         if (showNames) {
           addNameLabel(slide, ls, e.name, e.color, false);
+          if (mt) addNameLabel(slide, mt, e.name, e.color, true);
         }
       }
     });

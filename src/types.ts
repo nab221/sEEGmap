@@ -39,6 +39,12 @@ export interface SuperiorInferiorElectrode extends BaseElectrode {
   type: "superior-inferior";
   lateralStart: Point;
   lateralEnd: Point;
+  /**
+   * Optional deep-end marker (X) on the same hemisphere's *medial* view, for an
+   * in-plane trajectory whose tip reaches mesial structures (e.g. a temporal-pole
+   * electrode ending near the amygdala). Absent on most electrodes.
+   */
+  medialTarget?: Point;
 }
 
 /**

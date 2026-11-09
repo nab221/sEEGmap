@@ -409,6 +409,7 @@ export const useStore = create<StoreState>((set, get) => ({
         s.updateElectrode(electrode.id, {
           lateralStart: move(electrode.lateralStart),
           lateralEnd: move(electrode.lateralEnd),
+          ...(electrode.medialTarget ? { medialTarget: move(electrode.medialTarget) } : {}),
         });
       }
       return;
@@ -565,6 +566,7 @@ export const useStore = create<StoreState>((set, get) => ({
       color: partial?.color ?? nextColor(s.electrodes),
       lateralStart: partial?.lateralStart ?? { x: 0.5, y: 0.1 },
       lateralEnd: partial?.lateralEnd ?? { x: 0.5, y: 0.3 },
+      ...(partial?.medialTarget ? { medialTarget: partial.medialTarget } : {}),
       entryName: partial?.entryName ?? "",
       targetName: partial?.targetName ?? "",
       notes: partial?.notes ?? "",
@@ -758,12 +760,16 @@ export const useStore = create<StoreState>((set, get) => ({
       });
     } else {
       // Superior-inferior electrodes are mirrored geometrically. The lateral
-      // superior/inferior trajectory points flip in X.
+      // superior/inferior trajectory points (and any medial target) flip in X.
       created = s.addSuperiorInferior({
         name: mirroredName,
         color: source.color,
         lateralStart: { x: 1 - source.lateralStart.x, y: source.lateralStart.y },
         lateralEnd: { x: 1 - source.lateralEnd.x, y: source.lateralEnd.y },
+        medialTarget: source.medialTarget
+          ? { x: 1 - source.medialTarget.x, y: source.medialTarget.y }
+          : undefined,
+        showTarget: source.showTarget,
         entryName: source.entryName,
         targetName: source.targetName,
         notes: source.notes,

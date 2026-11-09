@@ -58,6 +58,25 @@ export function gridPositionInQuadrant(
   return pixelToNormalized(px, py, regions);
 }
 
+/**
+ * Map a point on a lateral view to the same relative position on that hemisphere's
+ * medial view. Lateral and medial quadrants of one hemisphere share their
+ * anterior/posterior orientation, so the point keeps its fractional position inside
+ * the quadrant's bbox. Used as a starting position for a marker the user then drags.
+ * Without a regions config, falls back to shifting the point half the figure down.
+ */
+export function lateralToMedial(point: Point, regions: BrainRegionsConfig | null): Point {
+  if (!regions) return { x: point.x, y: clamp01(point.y + 0.5) };
+  const px = point.x * regions.referenceWidth;
+  const py = point.y * regions.referenceHeight;
+  const side: "L" | "R" = px < regions.referenceWidth / 2 ? "L" : "R";
+  const [lx0, ly0, lx1, ly1] = regions.quadrants[quadrantForSide(side, "lateral")].bbox;
+  const [mx0, my0, mx1, my1] = regions.quadrants[quadrantForSide(side, "medial")].bbox;
+  const fx = clamp01((px - lx0) / (lx1 - lx0));
+  const fy = clamp01((py - ly0) / (ly1 - ly0));
+  return pixelToNormalized(mx0 + fx * (mx1 - mx0), my0 + fy * (my1 - my0), regions);
+}
+
 export function quadrantForSide(
   side: "L" | "R",
   view: "lateral" | "medial"
