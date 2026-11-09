@@ -127,14 +127,20 @@ caps it at 2 characters, but it isn't a fixed lookup table like `LOBE_CODES` abo
 convention that fits your unit (e.g. `I` for Insula, `F` for Frontal) and keep it
 consistent with the names you use in `superior-inferior-regions.json`.
 
-A superior‑inferior electrode has **four** points instead of two: a lateral start/end
-pair (rendered as filled circles with a connecting line, over the Lateral quadrant of the
-template) and a medial start/end pair (rendered as X marks with a connecting line, over
-the Medial quadrant). This models a trajectory that runs from a superior/lateral entry
-down to an inferior/medial target. If the exact name matches a key in
-`superior-inferior-regions.json`, all four points are placed from that config; otherwise
-it's added manually via the Manual tab and positioned by dragging, or built with the
-Anatomical Library's S–I click-to-build tool.
+A superior‑inferior electrode is drawn as a line on the **Lateral** view: an entry dot
+(●) joined to an end marker (✕). Use it for any trajectory whose length runs mostly
+front–back or up–down, which a side-on view shows well, such as an insular electrode
+entering from above or a temporal-pole electrode running along the pole. If the exact
+name matches a key in `superior-inferior-regions.json`, both points are placed from that
+config; otherwise it's added manually via the Manual tab and positioned by dragging, or
+built with the Anatomical Library's S–I click-to-build tool.
+
+When the tip ends in mesial structures, open the row's **⋮** menu and choose **Add
+medial ✕**. This adds a third marker on the same hemisphere's **Medial** view, placed at
+the matching position, for you to drag to where the tip ends. **Remove medial ✕** takes
+it off. The medial marker moves with arrow-key nudges, mirrors with **Mirror to R/L**,
+follows the row's ✕ visibility toggle, and appears in the PPTX export. It is not yet
+read from `superior-inferior-regions.json` or set by the click-to-build tool.
 
 ### Mirroring and lesion names
 

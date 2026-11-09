@@ -3,6 +3,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useStore } from "../store/useStore";
 import type { Electrode } from "../types";
+import { lateralToMedial } from "../lib/coords";
 
 const GRIP = (
   <svg width="12" height="14" viewBox="0 0 14 14" fill="none">
@@ -38,6 +39,7 @@ export default function ElectrodeRow({
   const selectedId = useStore((s) => s.selectedId);
   const hoveredId = useStore((s) => s.hoveredId);
   const setSelected = useStore((s) => s.setSelected);
+  const regions = useStore((s) => s.regions);
   const setHovered = useStore((s) => s.setHovered);
   const renameElectrode = useStore((s) => s.renameElectrode);
   const updateElectrode = useStore((s) => s.updateElectrode);
@@ -241,6 +243,28 @@ export default function ElectrodeRow({
                   }
                 />
               </div>
+            </div>
+          )}
+          {electrode.type === "superior-inferior" && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                {electrode.medialTarget
+                  ? "Medial target (✕) shown on the medial view -- drag it into place."
+                  : "Mark where the tip ends on the medial view."}
+              </span>
+              <button
+                className="btn btn-sm"
+                onClick={() =>
+                  updateElectrode(electrode.id, {
+                    medialTarget: electrode.medialTarget
+                      ? undefined
+                      : lateralToMedial(electrode.lateralEnd, regions),
+                  } as Partial<Electrode>)
+                }
+                style={{ whiteSpace: "nowrap" }}
+              >
+                {electrode.medialTarget ? "Remove medial ✕" : "Add medial ✕"}
+              </button>
             </div>
           )}
           <div className="field">
