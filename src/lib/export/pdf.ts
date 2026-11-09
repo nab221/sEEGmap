@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import { captureNode, getImageSize } from "./capture";
+import { composeFigureWithLegend } from "./legend";
 import type { Electrode } from "../../types";
 
 interface PdfOptions {
@@ -9,6 +10,8 @@ interface PdfOptions {
   planNotes: string;
   institution?: string;
   filename: string;
+  /** Draw the electrode legend beside the figure on the overview page. */
+  includeLegend?: boolean;
 }
 
 export async function exportWorkspacePdf({
@@ -18,6 +21,7 @@ export async function exportWorkspacePdf({
   planNotes,
   institution,
   filename,
+  includeLegend = false,
 }: PdfOptions) {
   const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
@@ -26,7 +30,13 @@ export async function exportWorkspacePdf({
 
   // ---------- Page 1: Overview ----------
   drawHeader(doc, "sEEGmap -- Overview", patientLabel, institution, pageW, margin);
-  const dataUrl = await captureNode(node, 2);
+  // Captured at 3x (as for PNG) when the legend shares the page, since the combined
+  // image is scaled down further to fit.
+  const captureScale = includeLegend ? 3 : 2;
+  const figureUrl = await captureNode(node, captureScale);
+  const dataUrl = includeLegend
+    ? await composeFigureWithLegend(figureUrl, electrodes, captureScale)
+    : figureUrl;
   const { width: iw, height: ih } = await getImageSize(dataUrl);
   const availW = pageW - margin * 2;
   const availH = pageH - margin * 2 - 40;

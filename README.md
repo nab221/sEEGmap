@@ -80,6 +80,9 @@ tabs:
 - **Export PNG / PDF / PPTX** render the current canvas (plus, for PDF/PPTX, an
   electrode table and notes page/slide) for sharing or printing. None of these are
   saved anywhere automatically — download what you need to keep.
+- Tick **Legend** (next to the export buttons) to draw a table of electrode names,
+  entries and targets beside the figure in the PNG, and on page 1 of the PDF, so a
+  single high-resolution image carries both. The choice is remembered in this browser.
 
 ### Maintain the anatomical library
 
