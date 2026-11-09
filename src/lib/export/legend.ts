@@ -29,7 +29,9 @@ export async function composeFigureWithLegend(
   const bodyFont = `${fontSize}px ${fontFamily}`;
   const headFont = `bold ${fontSize}px ${fontFamily}`;
 
-  const figure = await loadImage(figureDataUrl);
+  // The capture includes the empty canvas area around the figure; trim it so the
+  // figure sits right next to the legend.
+  const figure = trimWhitespace(await loadImage(figureDataUrl), 2 * u);
   const figW = figure.width;
   const figH = figure.height;
 
@@ -134,6 +136,61 @@ export async function composeFigureWithLegend(
   }
 
   return canvas.toDataURL("image/png");
+}
+
+/**
+ * Crop away the near-white border around an image's content, keeping `margin` pixels
+ * of it. Returns the image unchanged (as a canvas) when it is entirely blank.
+ */
+function trimWhitespace(img: HTMLImageElement, margin: number): HTMLCanvasElement {
+  const w = img.width;
+  const h = img.height;
+  const src = document.createElement("canvas");
+  src.width = w;
+  src.height = h;
+  const sctx = src.getContext("2d", { willReadFrequently: true })!;
+  sctx.drawImage(img, 0, 0);
+  const { data } = sctx.getImageData(0, 0, w, h);
+
+  // A pixel counts as content when any channel is visibly darker than white.
+  const isContent = (i: number) => data[i] < 245 || data[i + 1] < 245 || data[i + 2] < 245;
+  let top = h;
+  let bottom = -1;
+  let left = w;
+  let right = -1;
+  for (let y = 0; y < h; y++) {
+    const row = y * w * 4;
+    let first = -1;
+    for (let x = 0; x < w; x++) {
+      if (isContent(row + x * 4)) {
+        first = x;
+        break;
+      }
+    }
+    if (first < 0) continue;
+    let last = first;
+    for (let x = w - 1; x > first; x--) {
+      if (isContent(row + x * 4)) {
+        last = x;
+        break;
+      }
+    }
+    if (y < top) top = y;
+    bottom = y;
+    if (first < left) left = first;
+    if (last > right) right = last;
+  }
+  if (bottom < 0) return src;
+
+  const x0 = Math.max(0, Math.floor(left - margin));
+  const y0 = Math.max(0, Math.floor(top - margin));
+  const x1 = Math.min(w, Math.ceil(right + 1 + margin));
+  const y1 = Math.min(h, Math.ceil(bottom + 1 + margin));
+  const out = document.createElement("canvas");
+  out.width = x1 - x0;
+  out.height = y1 - y0;
+  out.getContext("2d")!.drawImage(src, x0, y0, out.width, out.height, 0, 0, out.width, out.height);
+  return out;
 }
 
 /** Truncate `text` with an ellipsis so it fits in `maxW` at the context's current font. */
