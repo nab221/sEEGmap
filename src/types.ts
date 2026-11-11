@@ -15,6 +15,28 @@ export type FigureId = "legacy" | "v2";
 
 export type ElectrodeType = "lateral-medial" | "superior-inferior" | "grid";
 
+/** Tissue a depth-electrode contact sits in, as marked by the user on the Axial view. */
+export type Tissue = "grey" | "white" | "outside";
+
+/** Which axial outline an electrode is drawn on: seen from below or from above. */
+export type AxialViewId = "inferior" | "superior";
+
+/**
+ * An electrode's shaft on the Axial view page. A schematic: contacts are spaced along
+ * the shaft at full length, as if it ran level in the axial plane.
+ */
+export interface AxialPlacement {
+  view: AxialViewId;
+  /** Contact 1 (the deepest), normalized 0..1 on that view's image. */
+  tip: Point;
+  /** Any point outward along the shaft from the tip; only its direction matters. */
+  toward: Point;
+  /** Number of contacts, 1..24. */
+  contacts: number;
+  /** Tissue per contact; index 0 is contact 1. Same length as `contacts`. */
+  tissue: Tissue[];
+}
+
 export interface BaseElectrode {
   id: string;
   name: string;
@@ -27,6 +49,8 @@ export interface BaseElectrode {
   order: number;
   createdAt: string;
   updatedAt: string;
+  /** Placement on the Axial view page. Absent = not shown there. */
+  axial?: AxialPlacement;
 }
 
 export interface LateralMedialElectrode extends BaseElectrode {

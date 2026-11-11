@@ -3,6 +3,7 @@ import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { useStore } from "./store/useStore";
 import Home from "./pages/Home";
 import Planner from "./pages/Planner";
+import AxialView from "./pages/AxialView";
 import Settings from "./pages/Settings";
 import AnatomyLibraryPage from "./pages/AnatomyLibrary";
 import Mark from "./components/Mark";
@@ -42,6 +43,7 @@ export default function App() {
           </NavLink>
           <nav style={{ display: "flex", gap: 4 }}>
             <NavTab to="/planner">Planner</NavTab>
+            <NavTab to="/axial">Axial view</NavTab>
             <NavTab to="/settings">Settings</NavTab>
             <NavTab to="/settings/anatomy">Anatomy Library</NavTab>
           </nav>
@@ -51,6 +53,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/planner" element={<Planner />} />
+          <Route path="/axial" element={<AxialView />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/settings/anatomy" element={<AnatomyLibraryPage />} />
         </Routes>

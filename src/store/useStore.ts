@@ -25,6 +25,8 @@ import {
 import { gridPositionInQuadrant, pixelToNormalized } from "../lib/coords";
 import { clampTranslation } from "../lib/geometry";
 import { defaultGridSize } from "../lib/grid";
+import { mirrorAxial, normalizeAxial } from "../lib/axial";
+import { AXIAL_VIEWS } from "../lib/axialViews";
 import { FIGURES, FIGURE_ORDER, isFigureId, loadFigurePref, saveFigurePref } from "../lib/figures";
 
 const PALETTE = [
@@ -773,6 +775,15 @@ export const useStore = create<StoreState>((set, get) => ({
         entryName: source.entryName,
         targetName: source.targetName,
         notes: source.notes,
+      });
+    }
+    // Carry the Axial view placement across, reflected on the same view. Still inside the
+    // history batch, so the mirror stays a single undo step.
+    // normalizeAxial returns null for data it can't draw, so the view lookup can't fail.
+    const sourceAxial = normalizeAxial(source.axial);
+    if (sourceAxial) {
+      get().updateElectrode(created.id, {
+        axial: mirrorAxial(sourceAxial, AXIAL_VIEWS[sourceAxial.view]),
       });
     }
     historyBatch = null;

@@ -51,6 +51,16 @@ export interface LegendLayout {
   height: number;
 }
 
+/** Optional changes to the legend table, for legends other than the Planner's. */
+export interface LegendOptions {
+  /** Row label for an electrode; defaults to A, B, C… by its position in `electrodes`. */
+  letterFor?: (e: Electrode, index: number) => string;
+  /** An extra column after Target. `cap` is its maximum width in CSS px. */
+  extraColumn?: { header: string; cap: number; cell: (e: Electrode) => string };
+}
+
+type ColKey = "num" | "name" | "entry" | "target" | "extra";
+
 /**
  * The electrode legend table: name, entry and target per electrode, drawn on a 2D
  * canvas. `u` is the number of device pixels per CSS pixel; every size is a CSS-pixel
@@ -65,11 +75,11 @@ export class LegendTable {
   private readonly dotSpace: number;
   private readonly bodyFont: string;
   private readonly headFont: string;
-  private readonly rows: { num: string; name: string; entry: string; target: string; color: string }[];
-  private readonly cols: { key: "num" | "name" | "entry" | "target"; header: string; w: number }[];
+  private readonly rows: (Record<ColKey, string> & { color: string })[];
+  private readonly cols: { key: ColKey; header: string; w: number }[];
   readonly tableW: number;
 
-  constructor(electrodes: Electrode[], u: number) {
+  constructor(electrodes: Electrode[], u: number, options: LegendOptions = {}) {
     this.u = u;
     this.rowH = 20 * u;
     this.gap = 20 * u;
@@ -82,11 +92,13 @@ export class LegendTable {
     this.headFont = `bold ${fontSize}px ${fontFamily}`;
 
     const sorted = [...electrodes].sort((a, b) => a.order - b.order);
+    const { letterFor, extraColumn } = options;
     this.rows = sorted.map((e, i) => ({
-      num: electrodeLetter(i),
+      num: letterFor ? letterFor(e, i) : electrodeLetter(i),
       name: e.name,
       entry: e.entryName || "--",
       target: e.targetName || "--",
+      extra: extraColumn ? extraColumn.cell(e) : "",
       color: e.color,
     }));
 
@@ -110,6 +122,13 @@ export class LegendTable {
       { key: "entry", header: "Entry", w: colWidth("Entry", rows.map((r) => r.entry), 200 * u) },
       { key: "target", header: "Target", w: colWidth("Target", rows.map((r) => r.target), 220 * u) },
     ];
+    if (extraColumn) {
+      this.cols.push({
+        key: "extra",
+        header: extraColumn.header,
+        w: colWidth(extraColumn.header, rows.map((r) => r.extra), extraColumn.cap * u),
+      });
+    }
     this.tableW = this.cols.reduce((sum, c) => sum + c.w, 0);
   }
 
