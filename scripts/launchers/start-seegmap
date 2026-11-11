@@ -1,0 +1,72 @@
+#!/bin/bash
+# Start sEEGmap — double-click launcher (Spotlight / Raycast / Finder).
+# Starts the Vite dev server detached, waits until it responds, opens the browser.
+#
+# __PROJECT_DIR__ and __NODE__ are placeholders substituted by build_apps.sh at
+# build time (derived from the repo location + `command -v node`).
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin:$HOME/.local/bin"
+
+PROJECT_DIR="__PROJECT_DIR__"
+# A dedicated port, kept apart from Vite's default 5173 so the launcher never
+# collides with (or gets stopped along with) a dev/preview server started from
+# a terminal, a worktree or Claude. Keep it fixed: sEEGmap stores plans in
+# IndexedDB, which is per-origin — a different port is a different, empty store.
+PORT=5180
+URL="http://localhost:${PORT}/"
+LOG="$HOME/Library/Logs/seegmap.log"
+
+notify() { osascript -e "display notification \"$2\" with title \"$1\"" >/dev/null 2>&1; }
+# -sTCP:LISTEN so we only detect the server's listening socket, never a browser
+# client connection that happens to be talking to the port.
+port_up() { lsof -ti tcp:${PORT} -sTCP:LISTEN >/dev/null 2>&1; }
+http_up() { curl -s -o /dev/null --max-time 2 "$URL"; }
+
+# Already running? Just open the browser.
+if port_up; then
+  open "$URL"
+  exit 0
+fi
+
+# Locate node (Finder launches with a bare PATH).
+NODE="__NODE__"
+[ -x "$NODE" ] || NODE="$(command -v node)"
+if [ -z "$NODE" ]; then
+  notify "sEEGmap" "Could not find 'node'. Start failed."
+  exit 1
+fi
+export PATH="$(dirname "$NODE"):$PATH"
+
+cd "$PROJECT_DIR" || { notify "sEEGmap" "Project folder not found."; exit 1; }
+
+mkdir -p "$(dirname "$LOG")"
+{
+  echo ""
+  echo "===== $(date) : starting sEEGmap ====="
+} >>"$LOG" 2>&1
+
+# Fresh clone (or a wiped node_modules): install dependencies first.
+if [ ! -f node_modules/vite/bin/vite.js ]; then
+  notify "sEEGmap" "Installing dependencies (first run)…"
+  npm install >>"$LOG" 2>&1 || { notify "sEEGmap" "npm install failed — see the log."; exit 1; }
+fi
+
+notify "sEEGmap" "Starting…"
+
+# Launch Vite directly (not via `npm run dev`) so the server is a single
+# process the Stop launcher can find by its command line. Detached so it
+# outlives this launcher; Vite's file watcher picks up source changes (HMR),
+# so a `git pull` / merge reaches the open page without a restart.
+nohup "$NODE" node_modules/vite/bin/vite.js --host 127.0.0.1 --port ${PORT} --strictPort \
+  </dev/null >>"$LOG" 2>&1 &
+
+# Poll for readiness (~30s).
+for _ in $(seq 1 60); do
+  if port_up && http_up; then
+    open "$URL"
+    exit 0
+  fi
+  sleep 0.5
+done
+
+notify "sEEGmap" "Server didn't respond in time — see ~/Library/Logs/seegmap.log."
+exit 1
