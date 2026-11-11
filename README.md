@@ -73,6 +73,34 @@ tabs:
 - Drag rows by their grip handle to reorder the electrode list (order carries into
   exports).
 
+### Mark contacts on the Axial view
+
+The **Axial view** tab shows each depth electrode's whole shaft, contact by contact, so you
+can see which inner contacts are useful and which sit in white matter or outside the brain.
+It is useful when an electrode has more contacts than its trajectory needs (e.g. a
+15-contact Alcis electrode on a short temporal trajectory).
+
+- Two outlines, both with anterior at the top: **Bottom-up** (seen from below, which suits
+  temporal electrodes) and **Top-down** (seen from above). Each is marked **L**/**R**. Seen
+  from below, the patient's left is on the viewer's **right**, as on an axial MRI slice.
+  Seen from above, it is on the viewer's left.
+- In the side list, choose **Off / Bottom-up / Top-down** for each electrode. It is placed
+  in its hemisphere (from the name's leading `L`/`R`) with the shaft pointing outward. Set
+  the number of contacts with the −/+ buttons or by typing a number.
+- Contacts are drawn from the tip (contact 1, the deepest) outward at **3.5 mm** spacing.
+  Contacts past the outline are still drawn.
+- **Click** a contact to cycle **grey matter → white matter → outside the brain**. **Drag**
+  a contact or the shaft to move it, and drag the **◆** handle to rotate the shaft about its
+  tip. Undo/redo work as in the Planner.
+- The page is a schematic: every shaft is drawn at full length, as if it ran level in the
+  axial plane, so a steep electrode looks longer than it would from above or below.
+- **Export PNG** saves two files. `<label>-axial.png` is the figure on an A4 landscape page.
+  `<label>-axial-legend.png` is a separate legend with each electrode's ID, name, entry,
+  target and contact ranges (e.g. `grey 1–3, 6 · white 4–5 · outside 7`), plus a key.
+  Some browsers ask once before letting a site save two files.
+- Placements and marks are saved with the plan (autosave and `.seegmap`), and
+  **Mirror to R/L** carries them to the mirrored electrode.
+
 ### Export / save
 
 - **Save .seegmap** downloads the full plan (electrodes, sketches, notes, patient label)
@@ -195,6 +223,9 @@ These drive the app without needing a rebuild for content changes (only a redepl
   Target" add workflow and the Settings → Anatomical Library page. Fully editable
   in-app (Import/Export CSV or JSON), or edit this file directly before deploying to
   change the shipped default for all users.
+- `axial-inferior.png`, `axial-superior.png` — the bottom-up and top-down outlines used by
+  the Axial view. Their size, midline and scale are set in `src/lib/axialViews.ts`; update
+  those values if you replace an image.
 
 ## Important limitation — please read
 
