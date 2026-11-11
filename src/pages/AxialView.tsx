@@ -4,6 +4,8 @@ import AxialCanvas from "../components/AxialCanvas";
 import AxialElectrodeList from "../components/AxialElectrodeList";
 import { AXIAL_VIEWS, AXIAL_VIEW_ORDER } from "../lib/axialViews";
 import { SCHEMATIC_NOTE } from "../lib/axialStyle";
+import { exportBaseName, exportWorkspacePng } from "../lib/export/png";
+import { axialLegendEntries, exportAxialLegendPng } from "../lib/export/axialLegend";
 
 /**
  * Axial view: each depth electrode's full shaft on a bottom-up or top-down outline, so
@@ -14,8 +16,32 @@ export default function AxialView() {
   const redo = useStore((s) => s.redo);
   const undoCount = useStore((s) => s.undoStack.length);
   const redoCount = useStore((s) => s.redoStack.length);
+  const electrodes = useStore((s) => s.electrodes);
+  const patientLabel = useStore((s) => s.patientLabel);
   const [showAllNumbers, setShowAllNumbers] = useState(false);
+  const [busy, setBusy] = useState(false);
   const figureRef = useRef<HTMLDivElement>(null);
+  const placedCount = axialLegendEntries(electrodes).length;
+
+  /** Save the figure and its legend as two PNGs. */
+  const runExport = async () => {
+    if (!figureRef.current || placedCount === 0) return;
+    const base = exportBaseName(patientLabel);
+    setBusy(true);
+    try {
+      await exportWorkspacePng(figureRef.current, `${base}-axial`);
+      await exportAxialLegendPng(electrodes, `${base}-axial-legend`);
+      window.alert(
+        `Saved ${base}-axial.png and ${base}-axial-legend.png.\n\n` +
+          "If only one arrived, allow multiple downloads for this site and export again."
+      );
+    } catch (err) {
+      console.error(err);
+      window.alert("Export failed. See console for details.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -67,13 +93,21 @@ export default function AxialView() {
             Show all contact numbers
           </label>
           <div style={{ flex: 1 }} />
-          <button className="btn btn-sm btn-primary" disabled>
-            Export PNG
+          <button
+            className="btn btn-sm btn-primary"
+            disabled={busy || placedCount === 0}
+            onClick={runExport}
+            title={placedCount === 0 ? "Put at least one electrode on a view first" : "Saves the figure and a separate legend as two PNG files"}
+          >
+            {busy ? "Exporting…" : "Export PNG"}
           </button>
         </div>
 
         <div className="scroll" style={{ flex: 1, padding: 20, minHeight: 0 }}>
-          <div ref={figureRef} style={{ background: "#fff", padding: 16, maxWidth: 1100, margin: "0 auto" }}>
+          {/* Centred by this wrapper, not by a margin on the captured node: the PNG capture copies
+              computed margins and would shift the figure off its own canvas. */}
+          <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+          <div ref={figureRef} style={{ background: "#fff", padding: 16 }}>
             <div style={{ display: "flex", gap: 40, alignItems: "flex-start" }}>
               {AXIAL_VIEW_ORDER.map((v) => (
                 <div key={v} style={{ flex: 1, minWidth: 0 }}>
@@ -86,6 +120,7 @@ export default function AxialView() {
               ))}
             </div>
             <div style={{ marginTop: 14, fontSize: 11, color: "#647480", textAlign: "center" }}>{SCHEMATIC_NOTE}</div>
+          </div>
           </div>
         </div>
       </div>

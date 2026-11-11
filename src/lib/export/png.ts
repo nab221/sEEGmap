@@ -56,13 +56,23 @@ export async function exportWorkspacePng(
     drawFitted(ctx, figure, area);
   }
 
-  const blob = await canvasToPngWithDpi(canvas, DPI);
+  downloadBlob(await canvasToPngWithDpi(canvas, DPI), filename);
+}
+
+/** Save a PNG blob as a download, adding ".png" to the name when it's missing. */
+export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = filename.endsWith(".png") ? filename : `${filename}.png`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/** Base file name for exports: the patient label with spaces as "_", or "seegmap_export". */
+export function exportBaseName(patientLabel: string): string {
+  const label = patientLabel.trim();
+  return label ? label.replace(/\s+/g, "_") : "seegmap_export";
 }
 
 interface Box {
@@ -161,7 +171,7 @@ function drawFitted(ctx: CanvasRenderingContext2D, img: HTMLCanvasElement, box: 
  * Encode the canvas as PNG with a pHYs chunk recording `dpi`, so image viewers and
  * print dialogs size it as a full A4 page rather than guessing at 72 or 96 dpi.
  */
-async function canvasToPngWithDpi(canvas: HTMLCanvasElement, dpi: number): Promise<Blob> {
+export async function canvasToPngWithDpi(canvas: HTMLCanvasElement, dpi: number): Promise<Blob> {
   const blob = await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("PNG encoding failed"))), "image/png")
   );

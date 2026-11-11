@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store/useStore";
 import BrainCanvas from "../components/BrainCanvas";
 import ElectrodePanel from "../components/ElectrodePanel";
-import { exportWorkspacePng } from "../lib/export/png";
+import { exportBaseName, exportWorkspacePng } from "../lib/export/png";
 import { exportWorkspacePdf } from "../lib/export/pdf";
 import { exportWorkspacePptx } from "../lib/export/pptx";
 import { saveSeegmapFile } from "../lib/export/seegmap";
@@ -146,7 +146,7 @@ export default function Planner() {
     }
   };
 
-  const baseFilename = () => (patientLabel.trim() ? patientLabel.trim().replace(/\s+/g, "_") : "seegmap_export");
+  const baseFilename = () => exportBaseName(patientLabel);
 
   const runExport = async (kind: "png" | "pdf" | "pptx") => {
     if (!canvasWrapRef.current) return;
