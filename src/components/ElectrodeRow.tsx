@@ -22,14 +22,17 @@ const cellInputStyle: React.CSSProperties = {
   background: "var(--surface)",
 };
 
-export const ROW_GRID_COLUMNS = "14px 62px 1fr 1fr 18px 18px 22px";
+export const ROW_GRID_COLUMNS = "14px 20px 62px 1fr 1fr 18px 18px 22px";
 
 export default function ElectrodeRow({
   electrode,
+  letter,
   checked,
   onToggleChecked,
 }: {
   electrode: Electrode;
+  /** The electrode's legend letter (A, B, C...), from its position in the full list. */
+  letter: string;
   checked: boolean;
   onToggleChecked: () => void;
 }) {
@@ -94,6 +97,14 @@ export default function ElectrodeRow({
       >
         <span {...attributes} {...listeners} style={{ cursor: "grab", display: "flex", touchAction: "none" }}>
           {GRIP}
+        </span>
+
+        <span
+          className="mono"
+          title={`Shown as ${letter} in the exported legend`}
+          style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", textAlign: "center" }}
+        >
+          {letter}
         </span>
 
         <input

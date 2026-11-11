@@ -10,6 +10,7 @@ import {
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useStore } from "../store/useStore";
 import ElectrodeRow, { ROW_GRID_COLUMNS } from "./ElectrodeRow";
+import { electrodeLetter } from "../lib/nomenclature";
 import AddElectrodeDialog from "./AddElectrodeDialog";
 import SketchPanel from "./SketchPanel";
 import TextPanel from "./TextPanel";
@@ -28,6 +29,9 @@ export default function ElectrodePanel() {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   const sorted = useMemo(() => [...electrodes].sort((a, b) => a.order - b.order), [electrodes]);
+  // Letters follow the full list order (as in the exported legend), so a search
+  // filter never relabels the electrodes it hides.
+  const letters = useMemo(() => new Map(sorted.map((e, i) => [e.id, electrodeLetter(i)])), [sorted]);
 
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -188,6 +192,7 @@ export default function ElectrodePanel() {
           }}
         >
           <span />
+          <span title="Legend letter in exports" style={{ textAlign: "center" }}>ID</span>
           <span>Name</span>
           <span>Entry</span>
           <span>Target</span>
@@ -217,6 +222,7 @@ export default function ElectrodePanel() {
               <ElectrodeRow
                 key={e.id}
                 electrode={e}
+                letter={letters.get(e.id) ?? ""}
                 checked={checkedIds.has(e.id)}
                 onToggleChecked={() => toggleChecked(e.id)}
               />
