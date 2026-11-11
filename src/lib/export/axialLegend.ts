@@ -23,11 +23,12 @@ export interface AxialLegendEntry {
 /** Placed depth electrodes in plan order, with their Planner letters and contact ranges. */
 export function axialLegendEntries(all: Electrode[]): AxialLegendEntry[] {
   const sorted = [...all].sort((a, b) => a.order - b.order);
-  return sorted.flatMap((e, i) =>
-    e.type !== "grid" && e.axial
-      ? [{ electrode: e, letter: electrodeLetter(i), ranges: formatTissueRanges(normalizeAxial(e.axial).tissue) }]
-      : []
-  );
+  return sorted.flatMap((e, i) => {
+    const placement = e.type !== "grid" ? normalizeAxial(e.axial) : null;
+    return placement
+      ? [{ electrode: e, letter: electrodeLetter(i), ranges: formatTissueRanges(placement.tissue) }]
+      : [];
+  });
 }
 
 /** Draw and download the legend PNG. Does nothing when no electrode is placed. */
@@ -42,7 +43,8 @@ export async function exportAxialLegendPng(allElectrodes: Electrode[], filename:
     u,
     {
       letterFor: (e) => byId.get(e.id)!.letter,
-      extraColumn: { header: "Contacts", cap: 320, cell: (e) => byId.get(e.id)!.ranges },
+      // No width cap: this image has no figure to crowd, and a truncated range would hide contacts.
+      extraColumn: { header: "Contacts", cap: Infinity, cell: (e) => byId.get(e.id)!.ranges },
     }
   );
   const layout = table.layoutForHeight(Infinity);

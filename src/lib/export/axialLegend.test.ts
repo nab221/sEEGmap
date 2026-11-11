@@ -60,6 +60,11 @@ describe("axialLegendEntries", () => {
     expect(axialLegendEntries([lm("a", "LTMI", 0, bad)])[0].ranges).toBe("grey 2–3 · white 1");
   });
 
+  it("leaves out placements that cannot be drawn", () => {
+    const broken = { ...axial(["grey"]), view: "axial-left" } as unknown as AxialPlacement;
+    expect(axialLegendEntries([lm("a", "LTMI", 0, broken)])).toEqual([]);
+  });
+
   it("is empty when nothing is placed", () => {
     expect(axialLegendEntries([lm("a", "LTMI", 0), grid])).toEqual([]);
   });

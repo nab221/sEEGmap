@@ -57,11 +57,15 @@ export default function AxialCanvas({
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<DragState | null>(null);
 
+  // Drawable placements only: anything normalizeAxial can't repair is treated as not placed.
   const placed = useMemo(
     () =>
       [...electrodes]
-        .filter((e) => e.type !== "grid" && e.axial?.view === viewId)
-        .sort((a, b) => a.order - b.order),
+        .sort((a, b) => a.order - b.order)
+        .flatMap((e) => {
+          const placement = e.type !== "grid" ? normalizeAxial(e.axial) : null;
+          return placement?.view === viewId ? [{ electrode: e, placement }] : [];
+        }),
     [electrodes, viewId]
   );
 
@@ -85,7 +89,10 @@ export default function AxialCanvas({
     kind: DragState["kind"],
     contactIndex: number | null
   ) => {
-    if (!electrode.axial) return;
+    // Primary button only: a right-click must not change a contact's mark.
+    if (e.button !== 0) return;
+    const startPlacement = normalizeAxial(electrode.axial);
+    if (!startPlacement) return;
     e.stopPropagation();
     (e.target as Element).setPointerCapture(e.pointerId);
     beginHistoryBatch();
@@ -93,7 +100,7 @@ export default function AxialCanvas({
       kind,
       electrodeId: electrode.id,
       start: { x: e.clientX, y: e.clientY },
-      startPlacement: normalizeAxial(electrode.axial),
+      startPlacement,
       contactIndex,
       moved: false,
     };
@@ -102,6 +109,11 @@ export default function AxialCanvas({
   const onPointerMove = (e: React.PointerEvent) => {
     const d = dragRef.current;
     if (!d) return;
+    // Button released without a pointerup reaching us (e.g. the window lost focus).
+    if (e.buttons === 0) {
+      cancelDrag();
+      return;
+    }
     if (d.kind === "rotate") {
       d.moved = true;
       updateElectrode(d.electrodeId, {
@@ -129,6 +141,13 @@ export default function AxialCanvas({
     endHistoryBatch();
   };
 
+  /** End a drag without treating it as a click: lost capture, cancel, or a stray release. */
+  const cancelDrag = () => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    endHistoryBatch();
+  };
+
   return (
     <div style={{ width: "100%", aspectRatio: `${frame.w} / ${frame.h}`, position: "relative" }}>
       <svg
@@ -139,17 +158,18 @@ export default function AxialCanvas({
         height="100%"
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        onPointerCancel={cancelDrag}
+        onLostPointerCapture={cancelDrag}
         // The frame keeps each view's L/R markers visibly its own when the two views sit side by side.
         style={{ display: "block", background: "#fff", touchAction: "none", border: "1px solid #cbd3da", borderRadius: 8, boxSizing: "border-box" }}
       >
         <image href={axialImageUrl(viewId)} x={0} y={0} width={view.width} height={view.height} />
         <SideMarkers view={view} />
-        {placed.map((e) => (
+        {placed.map(({ electrode: e, placement }) => (
           <Shaft
             key={e.id}
             electrode={e}
-            placement={normalizeAxial(e.axial!)}
+            placement={placement}
             view={view}
             showAllNumbers={showAllNumbers}
             onStart={startDrag}

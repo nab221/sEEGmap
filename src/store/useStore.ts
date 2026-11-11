@@ -779,9 +779,11 @@ export const useStore = create<StoreState>((set, get) => ({
     }
     // Carry the Axial view placement across, reflected on the same view. Still inside the
     // history batch, so the mirror stays a single undo step.
-    if (source.axial) {
+    // normalizeAxial returns null for data it can't draw, so the view lookup can't fail.
+    const sourceAxial = normalizeAxial(source.axial);
+    if (sourceAxial) {
       get().updateElectrode(created.id, {
-        axial: mirrorAxial(normalizeAxial(source.axial), AXIAL_VIEWS[source.axial.view]),
+        axial: mirrorAxial(sourceAxial, AXIAL_VIEWS[sourceAxial.view]),
       });
     }
     historyBatch = null;

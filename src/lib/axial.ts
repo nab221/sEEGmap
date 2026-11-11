@@ -30,13 +30,18 @@ export function nextTissue(t: Tissue): Tissue {
   return TISSUE_ORDER[(TISSUE_ORDER.indexOf(t) + 1) % TISSUE_ORDER.length];
 }
 
-function clampContacts(n: number): number {
-  if (!Number.isFinite(n)) return DEFAULT_CONTACTS;
-  return Math.min(MAX_CONTACTS, Math.max(MIN_CONTACTS, Math.round(n)));
+function clampContacts(n: unknown): number {
+  // Number() first, so a count stored as text ("15") is read rather than reset.
+  const v = Number(n);
+  if (n === null || n === "" || !Number.isFinite(v)) return DEFAULT_CONTACTS;
+  return Math.min(MAX_CONTACTS, Math.max(MIN_CONTACTS, Math.round(v)));
 }
 
+const isPoint = (pt: unknown): pt is Point =>
+  !!pt && Number.isFinite((pt as Point).x) && Number.isFinite((pt as Point).y);
+
 /** Tissue list for `n` contacts (clamped to 1..24), keeping existing marks and padding with grey. */
-export function resizeTissue(tissue: Tissue[], n: number): Tissue[] {
+export function resizeTissue(tissue: Tissue[], n: unknown): Tissue[] {
   const count = clampContacts(n);
   return Array.from({ length: count }, (_, i) => tissue[i] ?? "grey");
 }
@@ -47,10 +52,20 @@ function cleanTissue(tissue: unknown, contacts: number): Tissue[] {
   return resizeTissue(raw.map((t) => (TISSUE_ORDER.includes(t) ? t : "grey")), contacts);
 }
 
-/** Repair a placement read from storage or a file, so drawing and legends never break. */
-export function normalizeAxial(p: AxialPlacement): AxialPlacement {
+/**
+ * Repair a placement read from storage or a file, so drawing and legends never break.
+ * Returns null when it can't be drawn at all (no usable tip, or an unknown view); callers
+ * treat that electrode as not placed.
+ */
+export function normalizeAxial(p: AxialPlacement | null | undefined): AxialPlacement | null {
+  if (!p || typeof p !== "object") return null;
+  if (p.view !== "inferior" && p.view !== "superior") return null;
+  if (!isPoint(p.tip)) return null;
+  const tip = { x: p.tip.x, y: p.tip.y };
+  // A missing direction falls back to the tip, which draws pointing away from the midline.
+  const toward = isPoint(p.toward) ? { x: p.toward.x, y: p.toward.y } : { ...tip };
   const contacts = clampContacts(p.contacts);
-  return { ...p, contacts, tissue: cleanTissue(p.tissue, contacts) };
+  return { view: p.view, tip, toward, contacts, tissue: cleanTissue(p.tissue, contacts) };
 }
 
 export function withContactCount(p: AxialPlacement, n: number): AxialPlacement {

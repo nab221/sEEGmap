@@ -33,15 +33,15 @@ export default function AxialElectrodeList() {
       return;
     }
     const v = value as AxialViewId;
-    if (e.axial?.view === v) return;
+    if (normalizeAxial(e.axial)?.view === v) return;
     updateElectrode(e.id, {
       axial: defaultAxialPlacement(AXIAL_VIEWS[v], hemisphereOf(e.name), e.axial),
     });
   };
 
   const setContacts = (e: Electrode, n: number) => {
-    if (!e.axial) return;
     const current = normalizeAxial(e.axial);
+    if (!current) return;
     const next = withContactCount(current, n);
     if (next.contacts !== current.contacts) updateElectrode(e.id, { axial: next });
   };
@@ -50,7 +50,7 @@ export default function AxialElectrodeList() {
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       <div style={{ padding: "14px 16px 10px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <strong style={{ fontSize: 14 }}>Depth electrodes</strong>
-        <span className="badge">{depth.filter((e) => e.axial).length} / {depth.length} placed</span>
+        <span className="badge">{depth.filter((e) => normalizeAxial(e.axial)).length} / {depth.length} placed</span>
       </div>
       <div className="scroll" style={{ flex: 1, minHeight: 0, padding: "0 12px 16px" }}>
         {depth.length === 0 ? (
@@ -59,7 +59,7 @@ export default function AxialElectrodeList() {
           </p>
         ) : (
           depth.map((e) => {
-            const placement = e.axial ? normalizeAxial(e.axial) : null;
+            const placement = normalizeAxial(e.axial);
             return (
               <div
                 key={e.id}

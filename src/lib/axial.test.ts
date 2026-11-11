@@ -99,14 +99,33 @@ describe("tissue", () => {
   });
 
   it("normalizes malformed placements", () => {
-    expect(normalizeAxial({ ...p, contacts: 3, tissue: ["white", "bogus" as Tissue] }).tissue).toEqual([
+    expect(normalizeAxial({ ...p, contacts: 3, tissue: ["white", "bogus" as Tissue] })!.tissue).toEqual([
       "white",
       "grey",
       "grey",
     ]);
-    expect(normalizeAxial({ ...p, contacts: NaN }).contacts).toBe(10);
-    expect(normalizeAxial({ ...p, contacts: 3.6 }).contacts).toBe(4);
-    expect(normalizeAxial({ ...p, contacts: 99 }).contacts).toBe(24);
+    expect(normalizeAxial({ ...p, contacts: NaN })!.contacts).toBe(10);
+    expect(normalizeAxial({ ...p, contacts: 3.6 })!.contacts).toBe(4);
+    expect(normalizeAxial({ ...p, contacts: 99 })!.contacts).toBe(24);
+  });
+
+  it("reads a numeric-string contact count instead of resetting it", () => {
+    const fromFile = { ...p, contacts: "15" as unknown as number, tissue: [] };
+    expect(normalizeAxial(fromFile)!.contacts).toBe(15);
+  });
+
+  it("returns null for a placement it cannot draw", () => {
+    const broken = (patch: object) => ({ ...p, ...patch }) as unknown as AxialPlacement;
+    expect(normalizeAxial(broken({ tip: undefined }))).toBeNull();
+    expect(normalizeAxial(broken({ tip: { x: NaN, y: 0.5 } }))).toBeNull();
+    expect(normalizeAxial(broken({ view: "axial-left" }))).toBeNull();
+    expect(normalizeAxial(null as unknown as AxialPlacement)).toBeNull();
+  });
+
+  it("repairs a missing direction by pointing the shaft along the tip", () => {
+    const n = normalizeAxial({ ...p, toward: undefined } as unknown as AxialPlacement)!;
+    expect(n.toward).toEqual(n.tip);
+    expect(contactPositions(n, V)).toHaveLength(3);
   });
 
   it("cycles one contact, ignoring out-of-range indexes", () => {
