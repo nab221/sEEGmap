@@ -1,6 +1,7 @@
 import { jsPDF } from "jspdf";
 import { captureNode, getImageSize } from "./capture";
 import { composeFigureWithLegend } from "./legend";
+import { electrodeLetter } from "../nomenclature";
 import type { Electrode } from "../../types";
 
 interface PdfOptions {
@@ -50,7 +51,7 @@ export async function exportWorkspacePdf({
   drawHeader(doc, "sEEGmap -- Electrode Table", patientLabel, institution, pageW, margin);
   const sorted = [...electrodes].sort((a, b) => a.order - b.order);
   const cols = [
-    { key: "order", label: "#", w: 26 },
+    { key: "order", label: "ID", w: 26 },
     { key: "name", label: "Name", w: 70 },
     { key: "entry", label: "Entry", w: 220 },
     { key: "target", label: "Target", w: 220 },
@@ -76,7 +77,7 @@ export async function exportWorkspacePdf({
     }
     x = margin;
     const row = [
-      String(i + 1),
+      electrodeLetter(i),
       e.name,
       e.entryName || "--",
       e.targetName || "--",

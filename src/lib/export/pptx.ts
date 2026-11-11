@@ -3,6 +3,7 @@ import { cropHalf, fetchImageAsDataUrl, getImageSize, rasterizeSketches } from "
 import { REF_W } from "../constants";
 import { FIGURES, canvasHeight } from "../figures";
 import { stripHash } from "../color";
+import { electrodeLetter } from "../nomenclature";
 import { centroid } from "../geometry";
 import { contactRadiusPx, gridContacts, gridCorners, gridSizePx, localToPixels } from "../grid";
 import type { Electrode, FigureId, FreehandSketch, GridElectrode, Point, TextAnnotation } from "../../types";
@@ -380,7 +381,7 @@ export async function exportWorkspacePptx({
   const sorted = [...electrodes].sort((a, b) => a.order - b.order);
   const summaryRows: PptxGenJS.TableRow[] = [
     [
-      { text: "#", options: { bold: true, fill: { color: "DDE7EA" } } },
+      { text: "ID", options: { bold: true, fill: { color: "DDE7EA" } } },
       { text: "Name", options: { bold: true, fill: { color: "DDE7EA" } } },
       { text: "Entry", options: { bold: true, fill: { color: "DDE7EA" } } },
       { text: "Target", options: { bold: true, fill: { color: "DDE7EA" } } },
@@ -388,7 +389,7 @@ export async function exportWorkspacePptx({
     ...sorted.map((e, i) => {
       const fill = i % 2 === 0 ? "F7F9FA" : "EAF0F2";
       return [
-        { text: String(i + 1), options: { fill: { color: fill } } },
+        { text: electrodeLetter(i), options: { fill: { color: fill } } },
         { text: e.name, options: { fill: { color: fill } } },
         { text: e.entryName || "--", options: { fill: { color: fill } } },
         { text: e.targetName || "--", options: { fill: { color: fill } } },

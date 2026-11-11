@@ -83,3 +83,19 @@ export function isNameTaken(name: string, electrodes: Electrode[], excludeId?: s
     (e) => e.id !== excludeId && e.name.toUpperCase() === name.toUpperCase()
   );
 }
+
+/**
+ * The legend letter for the electrode at zero-based position `index` in the list:
+ * A, B, ... Z, then AA, AB, ... (spreadsheet-column style), matching the Natus
+ * convention of lettered electrodes with numbered contacts (A-1, A-2, B-1, ...).
+ */
+export function electrodeLetter(index: number): string {
+  let n = index + 1;
+  let s = "";
+  while (n > 0) {
+    const r = (n - 1) % 26;
+    s = String.fromCharCode(65 + r) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}

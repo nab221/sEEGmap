@@ -1,4 +1,5 @@
 import type { Electrode } from "../../types";
+import { electrodeLetter } from "../nomenclature";
 
 /**
  * Compose a captured figure (a PNG data URL) with an electrode legend table drawn to
@@ -82,7 +83,7 @@ export class LegendTable {
 
     const sorted = [...electrodes].sort((a, b) => a.order - b.order);
     this.rows = sorted.map((e, i) => ({
-      num: String(i + 1),
+      num: electrodeLetter(i),
       name: e.name,
       entry: e.entryName || "--",
       target: e.targetName || "--",
@@ -104,7 +105,7 @@ export class LegendTable {
       this.cellPadX * 2;
     const rows = this.rows;
     this.cols = [
-      { key: "num", header: "#", w: colWidth("#", rows.map((r) => r.num), 30 * u) },
+      { key: "num", header: "ID", w: colWidth("ID", rows.map((r) => r.num), 30 * u) },
       { key: "name", header: "Name", w: colWidth("Name", rows.map((r) => r.name), 120 * u, this.dotSpace) },
       { key: "entry", header: "Entry", w: colWidth("Entry", rows.map((r) => r.entry), 200 * u) },
       { key: "target", header: "Target", w: colWidth("Target", rows.map((r) => r.target), 220 * u) },
