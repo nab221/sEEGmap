@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../store/useStore";
 import type { Electrode } from "../types";
 import {
@@ -26,6 +26,46 @@ const ARRAY_PRESETS: ReadonlyArray<{ label: string; rows: number; cols: number; 
 
 export default function AddElectrodeDialog({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<Tab>("library");
+  // Library checkbox selection lives here (not in LibraryTab) so it survives tab
+  // switches, and so the dialog knows not to drop it on a stray backdrop click.
+  const [librarySelection, setLibrarySelection] = useState<Set<string>>(new Set());
+  const [nudge, setNudge] = useState(false);
+  // Only treat a click as "outside" if the press also started on the backdrop. A
+  // mousedown inside the card (e.g. selecting text in the filter box) that is released
+  // over the backdrop otherwise fires a click on the backdrop and closes the dialog.
+  const pressStartedOnBackdrop = useRef(false);
+  const nudgeTimer = useRef<number | undefined>(undefined);
+
+  const pending = librarySelection.size;
+
+  const requestClose = () => {
+    if (pending > 0 && !window.confirm(`Discard ${pending} selected electrode${pending === 1 ? "" : "s"}?`)) return;
+    onClose();
+  };
+
+  const onBackdropClick = (e: React.MouseEvent) => {
+    const fromBackdrop = pressStartedOnBackdrop.current && e.target === e.currentTarget;
+    pressStartedOnBackdrop.current = false;
+    if (!fromBackdrop) return;
+    if (pending > 0) {
+      // Never discard a selection on an outside click -- point at the way out instead.
+      setNudge(true);
+      window.clearTimeout(nudgeTimer.current);
+      nudgeTimer.current = window.setTimeout(() => setNudge(false), 2200);
+      return;
+    }
+    onClose();
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") requestClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  useEffect(() => () => window.clearTimeout(nudgeTimer.current), []);
 
   return (
     <div
@@ -39,7 +79,10 @@ export default function AddElectrodeDialog({ onClose }: { onClose: () => void })
         zIndex: 50,
         padding: 16,
       }}
-      onClick={onClose}
+      onMouseDown={(e) => {
+        pressStartedOnBackdrop.current = e.target === e.currentTarget;
+      }}
+      onClick={onBackdropClick}
     >
       <div
         className="card"
@@ -51,17 +94,21 @@ export default function AddElectrodeDialog({ onClose }: { onClose: () => void })
           flexDirection: "column",
           transition: "width 0.15s ease",
         }}
-        onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--line)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "14px 18px", borderBottom: "1px solid var(--line)" }}>
           <strong style={{ fontSize: 15 }}>Add Electrode</strong>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}>
+          {nudge && (
+            <span style={{ fontSize: 12, color: "var(--danger)", marginLeft: "auto" }}>
+              {pending} selected -- add them, or Close to discard
+            </span>
+          )}
+          <button className="btn btn-ghost btn-sm" onClick={requestClose}>
             Close
           </button>
         </div>
         <div style={{ display: "flex", gap: 4, padding: "10px 18px 0" }}>
           <TabButton active={tab === "library"} onClick={() => setTab("library")}>
-            Library
+            Library{pending > 0 ? ` (${pending})` : ""}
           </TabButton>
           <TabButton active={tab === "name"} onClick={() => setTab("name")}>
             By Name
@@ -77,7 +124,14 @@ export default function AddElectrodeDialog({ onClose }: { onClose: () => void })
           </TabButton>
         </div>
         <div className="scroll" style={{ padding: 18, flex: 1 }}>
-          {tab === "library" && <LibraryTab onDone={onClose} />}
+          {tab === "library" && (
+            <LibraryTab
+              onDone={onClose}
+              selectedIds={librarySelection}
+              setSelectedIds={setLibrarySelection}
+              highlightAdd={nudge}
+            />
+          )}
           {tab === "name" && <ByNameTab onDone={onClose} />}
           {tab === "manual" && <ManualTab onDone={onClose} />}
           {tab === "grid" && <GridStripTab onDone={onClose} />}
@@ -417,7 +471,17 @@ type LibraryRow = {
   fileOrder: number;
 };
 
-function LibraryTab({ onDone }: { onDone: () => void }) {
+function LibraryTab({
+  onDone,
+  selectedIds,
+  setSelectedIds,
+  highlightAdd,
+}: {
+  onDone: () => void;
+  selectedIds: Set<string>;
+  setSelectedIds: React.Dispatch<React.SetStateAction<Set<string>>>;
+  highlightAdd: boolean;
+}) {
   const anatomy = useStore((s) => s.anatomy);
   const siRegions = useStore((s) => s.siRegions);
   const electrodes = useStore((s) => s.electrodes);
@@ -426,7 +490,6 @@ function LibraryTab({ onDone }: { onDone: () => void }) {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<LibrarySortKey>("library");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const anatomyById = useMemo(() => new Map(anatomy.map((a) => [a.id, a])), [anatomy]);
 
@@ -536,9 +599,16 @@ function LibraryTab({ onDone }: { onDone: () => void }) {
     if (record) addByAnatomy(record);
   };
 
-  const addOneAndClose = (row: LibraryRow) => {
+  // The per-row Add places the electrode and keeps the dialog open, so several can be
+  // added in a row; the row then shows "Added". Any other checked rows are kept.
+  const addOne = (row: LibraryRow) => {
     placeOne(row);
-    onDone();
+    setSelectedIds((prev) => {
+      if (!prev.has(row.id)) return prev;
+      const next = new Set(prev);
+      next.delete(row.id);
+      return next;
+    });
   };
 
   const addSelected = () => {
@@ -656,7 +726,7 @@ function LibraryTab({ onDone }: { onDone: () => void }) {
                   className="btn btn-ghost btn-sm"
                   onClick={(e) => {
                     e.stopPropagation();
-                    addOneAndClose(r);
+                    addOne(r);
                   }}
                   style={{ fontSize: 11, padding: "3px 6px" }}
                 >
@@ -668,7 +738,12 @@ function LibraryTab({ onDone }: { onDone: () => void }) {
         })}
       </div>
 
-      <button className="btn btn-primary" onClick={addSelected} disabled={selectedCount === 0}>
+      <button
+        className="btn btn-primary"
+        onClick={addSelected}
+        disabled={selectedCount === 0}
+        style={highlightAdd ? { boxShadow: "0 0 0 3px var(--accent-soft), 0 0 0 5px var(--accent)" } : undefined}
+      >
         Add Selected {selectedCount > 0 ? `(${selectedCount})` : ""}
       </button>
     </div>
