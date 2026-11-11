@@ -1,0 +1,10 @@
+#!/bin/bash
+# Restart sEEGmap — double-click restarter.
+#
+# Rarely needed: Vite hot-reloads source changes on its own. Use it after a
+# dependency change in package.json, an edit to vite.config.ts, or if the
+# server is wedged. Stop and Start are bundled alongside this script (see
+# build_apps.sh), so it never depends on the other two apps being installed.
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$DIR/stop-seegmap"
+exec "$DIR/start-seegmap"

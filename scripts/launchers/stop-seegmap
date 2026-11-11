@@ -1,0 +1,37 @@
+#!/bin/bash
+# Stop sEEGmap — double-click stopper.
+# Finds the launcher's Vite server by port 5180 and by command match, then
+# terminates it. Dev servers on other ports (5173 etc.) are left alone.
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin:$HOME/.local/bin"
+
+PORT=5180
+
+notify() { osascript -e "display notification \"$2\" with title \"$1\"" >/dev/null 2>&1; }
+
+collect_pids() {
+  # -sTCP:LISTEN so we only match the server's listening socket, never a
+  # browser connection that happens to be talking to the port. The pgrep
+  # backstop is scoped to this port so it can't hit another Vite server.
+  { lsof -ti tcp:${PORT} -sTCP:LISTEN 2>/dev/null
+    pgrep -f "vite/bin/vite.js .*--port ${PORT}( |$)" 2>/dev/null
+  } | sort -u | grep -E '^[0-9]+$'
+}
+
+pids="$(collect_pids)"
+if [ -z "$pids" ]; then
+  notify "sEEGmap" "Not running."
+  exit 0
+fi
+
+kill $pids 2>/dev/null
+
+# Wait up to ~5s for a clean exit, then escalate.
+for _ in $(seq 1 10); do
+  [ -z "$(collect_pids)" ] && break
+  sleep 0.5
+done
+remaining="$(collect_pids)"
+[ -n "$remaining" ] && kill -9 $remaining 2>/dev/null
+
+notify "sEEGmap" "Stopped."
+exit 0
