@@ -1,22 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useStore } from "../store/useStore";
-import type { AxialViewId, Electrode } from "../types";
+import type { AxialPlacement, AxialViewId, Electrode } from "../types";
 import { electrodeLetter } from "../lib/nomenclature";
-import { AXIAL_VIEWS, AXIAL_VIEW_ORDER } from "../lib/axialViews";
+import { AXIAL_VIEWS, viewPickerOrder } from "../lib/axialViews";
 import {
   MAX_CONTACTS,
   MIN_CONTACTS,
   defaultAxialPlacement,
+  effectiveTissue,
   formatTissueRanges,
   hemisphereOf,
+  isOffScale,
   normalizeAxial,
+  setLastInBrain,
+  shaftFit,
   withContactCount,
 } from "../lib/axial";
+import { useBrainMask } from "../lib/useBrainMask";
 
 /**
- * Side list for the Axial view: per depth electrode, which outline it goes on (or Off),
- * how many contacts it has, and its marked contact ranges.
+ * Side list for the Electrode view: per depth electrode, which outline it goes on (or
+ * Off), how many contacts it has, the last contact in brain, how the shaft fits the
+ * outline, and its marked contact ranges.
  */
 export default function AxialElectrodeList() {
   const electrodes = useStore((s) => s.electrodes);
@@ -33,9 +39,10 @@ export default function AxialElectrodeList() {
       return;
     }
     const v = value as AxialViewId;
-    if (normalizeAxial(e.axial)?.view === v) return;
+    const current = normalizeAxial(e.axial);
+    if (current?.view === v) return;
     updateElectrode(e.id, {
-      axial: defaultAxialPlacement(AXIAL_VIEWS[v], hemisphereOf(e.name), e.axial),
+      axial: defaultAxialPlacement(AXIAL_VIEWS[v], hemisphereOf(e.name), current ?? undefined),
     });
   };
 
@@ -45,6 +52,8 @@ export default function AxialElectrodeList() {
     const next = withContactCount(current, n);
     if (next.contacts !== current.contacts) updateElectrode(e.id, { axial: next });
   };
+
+  const setPlacement = (e: Electrode, next: AxialPlacement) => updateElectrode(e.id, { axial: next });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
@@ -84,7 +93,7 @@ export default function AxialElectrodeList() {
                     style={{ fontSize: 12, padding: "3px 4px", borderRadius: 6, border: "1px solid var(--line-strong)" }}
                   >
                     <option value="off">Off</option>
-                    {AXIAL_VIEW_ORDER.map((v) => (
+                    {viewPickerOrder(hemisphereOf(e.name)).map((v) => (
                       <option key={v} value={v}>
                         {AXIAL_VIEWS[v].label}
                       </option>
@@ -92,22 +101,87 @@ export default function AxialElectrodeList() {
                   </select>
                 </div>
                 {placement && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, paddingLeft: 26 }}>
-                    <ContactCount
-                      value={placement.contacts}
-                      onCommit={(n) => setContacts(e, n)}
-                      label={e.name}
-                    />
-                    <span style={{ fontSize: 11.5, color: "var(--muted)", flex: 1 }}>
-                      {formatTissueRanges(placement.tissue)}
-                    </span>
-                  </div>
+                  <PlacementDetails
+                    electrode={e}
+                    placement={placement}
+                    onContacts={(n) => setContacts(e, n)}
+                    onChange={(next) => setPlacement(e, next)}
+                  />
                 )}
               </div>
             );
           })
         )}
       </div>
+    </div>
+  );
+}
+
+/** Count, "last in brain", fit and ranges for one placed electrode. */
+function PlacementDetails({
+  electrode,
+  placement,
+  onContacts,
+  onChange,
+}: {
+  electrode: Electrode;
+  placement: AxialPlacement;
+  onContacts: (n: number) => void;
+  onChange: (next: AxialPlacement) => void;
+}) {
+  const mask = useBrainMask(placement.view);
+  const fit = shaftFit(placement, AXIAL_VIEWS[placement.view], mask);
+  const pct = Math.round(fit.ratio * 100);
+  const warn = isOffScale(fit) || fit.status === "no-crossing";
+  const small = { fontSize: 11.5, color: "var(--muted)" } as const;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 6, paddingLeft: 26 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <ContactCount value={placement.contacts} onCommit={onContacts} label={electrode.name} />
+        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11.5, color: "var(--muted)" }}>
+          Last in brain
+          <select
+            value={placement.lastInBrain ?? ""}
+            onChange={(ev) =>
+              onChange(setLastInBrain(placement, ev.target.value === "" ? undefined : Number(ev.target.value)))
+            }
+            aria-label={`Last contact in brain for ${electrode.name}`}
+            style={{ fontSize: 12, padding: "2px 4px", borderRadius: 6, border: "1px solid var(--line-strong)" }}
+          >
+            <option value="">All</option>
+            {Array.from({ length: placement.contacts }, (_, i) => (
+              <option key={i + 1} value={i + 1}>
+                {i + 1}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {(fit.status !== "nominal" || placement.edgeDist !== undefined) && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, ...small, color: warn ? "#b45309" : small.color }}>
+          <span style={{ flex: 1 }}>
+            {fit.status === "no-crossing"
+              ? "⚠ Brain edge not found; standard spacing"
+              : isOffScale(fit)
+                ? `⚠ ${pct}% of true scale. Try another view or check the tip`
+                : `Scale ${pct}%`}
+          </span>
+          {placement.edgeDist !== undefined && (
+            <button
+              className="btn btn-sm"
+              style={{ height: 22, padding: "0 7px", fontSize: 11 }}
+              onClick={() => {
+                const { edgeDist: _drop, ...rest } = placement;
+                onChange(rest);
+              }}
+              title="Go back to the edge found from the outline"
+            >
+              Reset edge
+            </button>
+          )}
+        </div>
+      )}
+      <span style={small}>{formatTissueRanges(effectiveTissue(placement))}</span>
     </div>
   );
 }

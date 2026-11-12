@@ -9,6 +9,7 @@
 
 import type { AxialViewId } from "../types";
 import type { Hemisphere } from "./axial";
+import type { PixelRect } from "./brainMask";
 
 export interface AxialViewConfig {
   id: AxialViewId;
@@ -35,13 +36,15 @@ export interface AxialViewConfig {
   counterpart?: AxialViewId;
   /** Blank margin round the outline, as fractions of the image size, so outside contacts stay on the figure. */
   margin: { x: number; y: number };
+  /** Native-px rectangles where the image crops the outline off; the brain mask treats them as outline. */
+  maskSeals?: PixelRect[];
 }
 
 /** Front-to-back length of a typical adult brain, used to scale the outlines. */
 const BRAIN_LENGTH_MM = 170;
 
 const AXIAL_MARGIN = { x: 0.2, y: 0.06 };
-const SAGITTAL_MARGIN = { x: 0.15, y: 0.35 };
+const SAGITTAL_MARGIN = { x: 0.08, y: 0.25 };
 
 export const AXIAL_VIEWS: Record<AxialViewId, AxialViewConfig> = {
   inferior: {
@@ -71,6 +74,12 @@ export const AXIAL_VIEWS: Record<AxialViewId, AxialViewConfig> = {
     mmPerPx: BRAIN_LENGTH_MM / (521 - 0),
     patientLeftOnViewerLeft: true,
     margin: AXIAL_MARGIN,
+    // The frontal poles run off the top edge (strokes at x 133..283 on row 0) and the
+    // occipital poles stop at row 521 (strokes at x 138..316).
+    maskSeals: [
+      [133, 0, 283, 0],
+      [138, 521, 316, 521],
+    ],
   },
   leftLateral: {
     id: "leftLateral",

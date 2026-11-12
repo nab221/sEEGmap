@@ -14,21 +14,31 @@ export interface BrainMask {
   data: Uint8Array;
 }
 
+/** Inclusive pixel rectangle [x0, y0, x1, y1]. */
+export type PixelRect = [number, number, number, number];
+
 /**
  * Flood-fill the white background in from the image border (4-connected, so a one-pixel
- * diagonal stroke still closes a shape) and call everything else brain.
+ * diagonal stroke still closes a shape) and call everything else brain. `seals` are
+ * rectangles treated as outline, for an outline the image crops off at its edge.
  */
 export function buildBrainMask(
   rgba: Uint8ClampedArray | Uint8Array,
   width: number,
   height: number,
-  whiteMin = 230
+  whiteMin = 230,
+  seals: PixelRect[] = []
 ): BrainMask {
   const n = width * height;
   const white = new Uint8Array(n);
   for (let k = 0; k < n; k++) {
     const i = k * 4;
     white[k] = rgba[i] >= whiteMin && rgba[i + 1] >= whiteMin && rgba[i + 2] >= whiteMin ? 1 : 0;
+  }
+  for (const [x0, y0, x1, y1] of seals) {
+    for (let y = Math.max(0, y0); y <= Math.min(height - 1, y1); y++) {
+      for (let x = Math.max(0, x0); x <= Math.min(width - 1, x1); x++) white[y * width + x] = 0;
+    }
   }
 
   const background = new Uint8Array(n);

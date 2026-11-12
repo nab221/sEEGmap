@@ -426,6 +426,16 @@ describe("shaftFit", () => {
     expect(f.innerPx).toBeCloseTo(10, 9);
   });
 
+  it("leaves an old plan with hand-marked outside contacts at true spacing", () => {
+    const old: AxialPlacement = {
+      ...p,
+      contacts: 10,
+      tissue: [...Array(4).fill("grey"), ...Array(6).fill("outside")],
+    };
+    expect(shaftFit(old, V, mask).status).toBe("nominal");
+    expect(shaftFit({ ...old, tissue: Array(10).fill("grey") }, V, mask).status).toBe("shrunk");
+  });
+
   it("stays at standard spacing, without a warning, while the outline loads", () => {
     expect(shaftFit(q, V, null).status).toBe("nominal");
   });

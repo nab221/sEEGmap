@@ -65,6 +65,20 @@ describe("buildBrainMask", () => {
     expect(isBrain(m, 3, 3)).toBe(true);
   });
 
+  it("treats sealed rectangles as outline, closing a shape cut off by the image edge", () => {
+    const cut = img([
+      ".#.....#.",
+      ".#.....#.",
+      ".#.....#.",
+      ".#######.",
+      ".........",
+    ]);
+    expect(isBrain(buildBrainMask(cut.rgba, cut.width, cut.height), 4, 1)).toBe(false);
+    const sealed = buildBrainMask(cut.rgba, cut.width, cut.height, 230, [[1, 0, 7, 0]]);
+    expect(isBrain(sealed, 4, 1)).toBe(true);
+    expect(isBrain(sealed, 0, 0)).toBe(false);
+  });
+
   it("is never brain off the image", () => {
     const m = buildBrainMask(ring.rgba, ring.width, ring.height);
     expect(isBrain(m, -1, 0)).toBe(false);

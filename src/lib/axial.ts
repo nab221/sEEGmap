@@ -230,16 +230,24 @@ function alongShaft(p: AxialPlacement, view: AxialViewConfig, distPx: number): P
 /**
  * Fit an electrode to its view's outline. The edge is the hand-set `edgeDist` when there
  * is one, else where the shaft first leaves the brain mask. With no mask yet (still
- * loading) the shaft stays at true spacing, without a warning.
+ * loading), or for an older plan whose outside contacts were marked by hand, the shaft
+ * stays at true spacing, without a warning.
  */
 export function shaftFit(p: AxialPlacement, view: AxialViewConfig, mask: BrainMask | null): SpacingFit {
   const nominalPx = nominalSpacingPx(view);
+  // A plan from before the dropdown, with outside contacts marked by hand: leave it at true
+  // spacing, as it was drawn then. Shrinking would pull those contacts back inside.
+  if (p.lastInBrain === undefined && p.edgeDist === undefined && p.tissue.includes("outside")) {
+    return nominalFit(view);
+  }
   let crossingPx: number | null;
   if (p.edgeDist !== undefined) {
     crossingPx = p.edgeDist;
   } else if (mask) {
     const tipPx = { x: p.tip.x * view.width, y: p.tip.y * view.height };
-    crossingPx = findCrossingPx(mask, tipPx, directionPx(p, view), (p.contacts + 2) * nominalPx);
+    // Search the whole image: an edge far beyond the last contact should show up as an
+    // off-scale fit (wrong view or tip), not as "not found".
+    crossingPx = findCrossingPx(mask, tipPx, directionPx(p, view), Math.hypot(view.width, view.height));
   } else {
     return nominalFit(view);
   }

@@ -1,14 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../store/useStore";
 import AxialCanvas from "../components/AxialCanvas";
 import AxialElectrodeList from "../components/AxialElectrodeList";
 import { AXIAL_VIEWS, AXIAL_VIEW_ORDER } from "../lib/axialViews";
+import { normalizeAxial } from "../lib/axial";
+import type { AxialViewId } from "../types";
 import { exportBaseName, exportWorkspacePng } from "../lib/export/png";
 import { axialLegendEntries, exportAxialLegendPng } from "../lib/export/axialLegend";
 
 /**
- * Axial view: each depth electrode's full shaft on a bottom-up or top-down outline, so
- * every contact can be marked as grey matter, white matter or outside the brain.
+ * Electrode view: after implantation, each depth electrode's shaft on the outline that
+ * shows it best, so every contact can be marked grey matter, white matter, noisy or
+ * outside the brain. Only views with an electrode on them are shown.
  */
 export default function AxialView() {
   const undo = useStore((s) => s.undo);
@@ -19,20 +22,37 @@ export default function AxialView() {
   const patientLabel = useStore((s) => s.patientLabel);
   const [showAllNumbers, setShowAllNumbers] = useState(false);
   const [busy, setBusy] = useState(false);
-  const figureRef = useRef<HTMLDivElement>(null);
+  const viewRefs = useRef<Partial<Record<AxialViewId, HTMLDivElement | null>>>({});
   const placedCount = axialLegendEntries(electrodes).length;
+  const usedViews = useMemo(() => {
+    const used = new Set(
+      electrodes.flatMap((e) => {
+        const p = e.type !== "grid" ? normalizeAxial(e.axial) : null;
+        return p ? [p.view] : [];
+      })
+    );
+    return AXIAL_VIEW_ORDER.filter((v) => used.has(v));
+  }, [electrodes]);
 
-  /** Save the figure and its legend as two PNGs. */
+  /** Save each view in use as its own PNG, then the combined legend. */
   const runExport = async () => {
-    if (!figureRef.current || placedCount === 0) return;
+    if (placedCount === 0) return;
     const base = exportBaseName(patientLabel);
     setBusy(true);
     try {
-      await exportWorkspacePng(figureRef.current, `${base}-axial`);
-      await exportAxialLegendPng(electrodes, `${base}-axial-legend`);
+      const saved: string[] = [];
+      for (const v of usedViews) {
+        const node = viewRefs.current[v];
+        if (!node) continue;
+        const name = `${base}-${AXIAL_VIEWS[v].fileSlug}`;
+        await exportWorkspacePng(node, name);
+        saved.push(`${name}.png`);
+      }
+      await exportAxialLegendPng(electrodes, `${base}-electrode-legend`);
+      saved.push(`${base}-electrode-legend.png`);
       window.alert(
-        `Saved ${base}-axial.png and ${base}-axial-legend.png.\n\n` +
-          "If only one arrived, allow multiple downloads for this site and export again."
+        `Saved ${saved.join(", ")}.\n\n` +
+          "If some are missing, allow multiple downloads for this site and export again."
       );
     } catch (err) {
       console.error(err);
@@ -76,7 +96,8 @@ export default function AxialView() {
           }}
         >
           <span style={{ fontSize: 13, color: "var(--muted)" }}>
-            Click a contact to cycle grey → white → outside. Drag to move; drag the ◆ to rotate.
+            Click a contact: grey → white → noisy. Set "Last in brain" in the list. Drag to move, ◆ to rotate, the
+            edge bar to adjust the brain edge.
           </span>
           <div style={{ display: "flex", gap: 5 }} title="Undo / redo (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z)">
             <button className="btn btn-sm" disabled={undoCount === 0} onClick={undo}>↶ Undo</button>
@@ -96,26 +117,43 @@ export default function AxialView() {
             className="btn btn-sm btn-primary"
             disabled={busy || placedCount === 0}
             onClick={runExport}
-            title={placedCount === 0 ? "Put at least one electrode on a view first" : "Saves the figure and a separate legend as two PNG files"}
+            title={placedCount === 0 ? "Put at least one electrode on a view first" : "Saves each view as its own PNG with its legend, plus a combined legend"}
           >
             {busy ? "Exporting…" : "Export PNG"}
           </button>
         </div>
 
         <div className="scroll" style={{ flex: 1, padding: 20, minHeight: 0 }}>
-          {/* Centred by this wrapper, not by a margin on the captured node: the PNG capture copies
-              computed margins and would shift the figure off its own canvas. */}
-          <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-          <div ref={figureRef} style={{ background: "#fff", padding: 16 }}>
-            <div style={{ display: "flex", gap: 40, alignItems: "flex-start" }}>
-              {AXIAL_VIEW_ORDER.map((v) => (
-                <div key={v} style={{ flex: 1, minWidth: 0 }}>
-                  <AxialCanvas viewId={v} showAllNumbers={showAllNumbers} />
+          {usedViews.length === 0 ? (
+            <p style={{ fontSize: 13, color: "var(--muted)", textAlign: "center", marginTop: 40 }}>
+              Choose a view for an electrode in the list to show it here.
+            </p>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
+                gap: 20,
+                maxWidth: 1400,
+                margin: "0 auto",
+              }}
+            >
+              {usedViews.map((v) => (
+                // The border sits on this wrapper, outside the captured node, so it isn't exported.
+                <div key={v} style={{ border: "1px solid #cbd3da", borderRadius: 8, overflow: "hidden", background: "#fff" }}>
+                  <div
+                    ref={(el) => {
+                      viewRefs.current[v] = el;
+                    }}
+                    data-view={v}
+                    style={{ background: "#fff" }}
+                  >
+                    <AxialCanvas viewId={v} showAllNumbers={showAllNumbers} />
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
-          </div>
+          )}
         </div>
       </div>
       <div style={{ width: 380, flexShrink: 0, borderLeft: "1px solid var(--line)", background: "var(--surface)" }}>
