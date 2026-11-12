@@ -141,6 +141,14 @@ export function nominalSpacingPx(view: AxialViewConfig): number {
 export const OFF_SCALE_TOLERANCE = 0.25;
 
 /**
+ * The drawn spacing never strays further than this from the true scale, whatever the fit
+ * asks for: a far edge over a small "last in brain" would otherwise stretch the shaft off
+ * the figure. The row still reports (and warns about) the real ratio.
+ */
+const DRAW_RATIO_MIN = 0.5;
+const DRAW_RATIO_MAX = 2;
+
+/**
  * How an electrode's contacts are spaced on the figure.
  *  - nominal:     true 3.5 mm spacing.
  *  - fitted:      contacts 1..N+1 stretched or squeezed so the outline falls halfway
@@ -168,13 +176,17 @@ export function fitSpacing(a: {
 }): SpacingFit {
   const { nominalPx, contacts } = a;
   const crossing = a.crossingPx !== null && a.crossingPx > 0 ? a.crossingPx : null;
-  const make = (innerPx: number, outerPx: number, status: SpacingFit["status"]): SpacingFit => ({
-    innerPx,
-    outerPx,
-    ratio: innerPx / nominalPx,
-    crossingPx: crossing,
-    status,
-  });
+  const make = (innerPx: number, outerPx: number, status: SpacingFit["status"]): SpacingFit => {
+    const ratio = innerPx / nominalPx;
+    const drawn = nominalPx * Math.min(DRAW_RATIO_MAX, Math.max(DRAW_RATIO_MIN, ratio));
+    return {
+      innerPx: drawn,
+      outerPx: status === "shrunk" ? drawn : outerPx,
+      ratio,
+      crossingPx: crossing,
+      status,
+    };
+  };
   const n = a.lastInBrain;
   if (n !== undefined && n >= 1 && n < contacts) {
     if (crossing === null) return make(nominalPx, nominalPx, "no-crossing");
@@ -274,6 +286,24 @@ export function handlePosition(p: AxialPlacement, view: AxialViewConfig, fit: Sp
 /** The brain edge the fit used, normalized, or null when there is none. */
 export function edgePosition(p: AxialPlacement, view: AxialViewConfig, fit: SpacingFit): Point | null {
   return fit.crossingPx === null ? null : alongShaft(p, view, fit.crossingPx);
+}
+
+/**
+ * Where the draggable edge bar goes, in native px from the tip: the edge the fit used, or,
+ * when no edge was found, the true-scale position halfway between the last contact in
+ * brain and the next, so the edge can still be set by hand. Null when "last in brain"
+ * marks nothing outside (no bar).
+ */
+export function edgeHandleDistPx(p: AxialPlacement, view: AxialViewConfig, fit: SpacingFit): number | null {
+  const n = outsideFrom(p.contacts, p.lastInBrain);
+  if (n === null) return null;
+  return fit.crossingPx ?? (n - 0.5) * nominalSpacingPx(view);
+}
+
+/** The edge bar's position, normalized, or null when there is no bar. */
+export function edgeHandlePosition(p: AxialPlacement, view: AxialViewConfig, fit: SpacingFit): Point | null {
+  const d = edgeHandleDistPx(p, view, fit);
+  return d === null ? null : alongShaft(p, view, d);
 }
 
 /** Signed distance (native px) of a normalized point along the shaft from the tip. */

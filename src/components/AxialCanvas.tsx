@@ -6,7 +6,7 @@ import {
   contactPositions,
   cycleContact,
   distanceAlongShaft,
-  edgePosition,
+  edgeHandlePosition,
   effectiveTissue,
   handlePosition,
   nominalSpacingPx,
@@ -262,8 +262,7 @@ function Shaft({
   const ny = ux;
   const font = "Helvetica, Arial, sans-serif";
   const lastIndex = contacts.length - 1;
-  const showEdge = placement.lastInBrain !== undefined && placement.lastInBrain < placement.contacts;
-  const edgeN = showEdge ? edgePosition(placement, view, fit) : null;
+  const edgeN = edgeHandlePosition(placement, view, fit);
   const edge = edgeN ? toPx(edgeN) : null;
   const handleR = mm(1.2);
 

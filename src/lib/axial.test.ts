@@ -10,6 +10,7 @@ import {
   hemisphereOf,
   mirrorAxial,
   contactDistancesPx,
+  edgeHandleDistPx,
   edgePosition,
   effectiveTissue,
   fitSpacing,
@@ -409,11 +410,11 @@ describe("shaftFit", () => {
   const q: AxialPlacement = { ...p, contacts: 10, tissue: Array(10).fill("grey"), lastInBrain: 3 };
 
   it("finds the outline along the shaft and fits to it", () => {
-    const f = shaftFit(q, V, mask);
+    const f = shaftFit({ ...q, lastInBrain: 5 }, V, mask);
     expect(f.status).toBe("fitted");
     expect(f.crossingPx!).toBeGreaterThanOrEqual(50);
     expect(f.crossingPx!).toBeLessThanOrEqual(51);
-    expect(f.innerPx).toBeCloseTo(f.crossingPx! / 2.5, 9);
+    expect(f.innerPx).toBeCloseTo(f.crossingPx! / 4.5, 9);
   });
 
   it("falls back when the tip is outside the brain", () => {
@@ -465,5 +466,27 @@ describe("isOffScale", () => {
     expect(isOffScale(fit(0.8, "fitted"))).toBe(false);
     expect(isOffScale(fit(0.6, "shrunk"))).toBe(true);
     expect(isOffScale(fit(1, "no-crossing"))).toBe(false);
+  });
+});
+
+describe("review fixes", () => {
+  it("caps how far a fit stretches or squeezes the drawing, but reports the real scale", () => {
+    const far = fitSpacing({ nominalPx: 10, contacts: 15, lastInBrain: 1, crossingPx: 490 });
+    expect(far.innerPx).toBe(20);
+    expect(far.ratio).toBeCloseTo(98, 6);
+    expect(isOffScale(far)).toBe(true);
+    const near = fitSpacing({ nominalPx: 10, contacts: 15, lastInBrain: 12, crossingPx: 23 });
+    expect(near.innerPx).toBe(5);
+    expect(isOffScale(near)).toBe(true);
+  });
+
+  it("puts the edge bar at the detected edge, or at the true-scale position when none was found", () => {
+    const q: AxialPlacement = { ...p, contacts: 10, tissue: Array(10).fill("grey"), lastInBrain: 3 };
+    const found: SpacingFit = { innerPx: 9, outerPx: 10, ratio: 0.9, crossingPx: 22.5, status: "fitted" };
+    expect(edgeHandleDistPx(q, V, found)).toBe(22.5);
+    const lost: SpacingFit = { innerPx: 10, outerPx: 10, ratio: 1, crossingPx: null, status: "no-crossing" };
+    expect(edgeHandleDistPx(q, V, lost)).toBeCloseTo(25, 9);
+    expect(edgeHandleDistPx({ ...q, lastInBrain: undefined }, V, lost)).toBeNull();
+    expect(edgeHandleDistPx({ ...q, lastInBrain: 10 }, V, lost)).toBeNull();
   });
 });
