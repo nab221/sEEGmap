@@ -73,33 +73,53 @@ tabs:
 - Drag rows by their grip handle to reorder the electrode list (order carries into
   exports).
 
-### Mark contacts on the Axial view
+### Mark contacts on the Electrode view
 
-The **Axial view** tab shows each depth electrode's whole shaft, contact by contact, so you
-can see which inner contacts are useful and which sit in white matter or outside the brain.
-It is useful when an electrode has more contacts than its trajectory needs (e.g. a
-15-contact Alcis electrode on a short temporal trajectory).
+The Planner is the plan before surgery. The **Electrode view** tab is for after
+implantation: it shows each depth electrode's shaft, contact by contact, so the picture
+in the clinical report shows which contacts you are recording from.
 
-- Two outlines, both with anterior at the top: **Bottom-up** (seen from below, which suits
-  temporal electrodes) and **Top-down** (seen from above). Each is marked **L**/**R**. Seen
-  from below, the patient's left is on the viewer's **right**, as on an axial MRI slice.
-  Seen from above, it is on the viewer's left.
-- In the side list, choose **Off / Bottom-up / Top-down** for each electrode. It is placed
-  in its hemisphere (from the name's leading `L`/`R`) with the shaft pointing outward. Set
-  the number of contacts with the −/+ buttons or by typing a number.
-- Contacts are drawn from the tip (contact 1, the deepest) outward at **3.5 mm** spacing.
-  Contacts past the outline are still drawn.
-- **Click** a contact to cycle **grey matter → white matter → outside the brain**. **Drag**
-  a contact or the shaft to move it, and drag the **◆** handle to rotate the shaft about its
-  tip. Undo/redo work as in the Planner.
-- The page is a schematic: every shaft is drawn at full length, as if it ran level in the
-  axial plane, so a steep electrode looks longer than it would from above or below.
-- **Export PNG** saves two files. `<label>-axial.png` is the figure on an A4 landscape page.
-  `<label>-axial-legend.png` is a separate legend with each electrode's ID, name, entry,
-  target and contact ranges (e.g. `grey 1–3, 6 · white 4–5 · outside 7`), plus a key.
-  Some browsers ask once before letting a site save two files.
-- Placements and marks are saved with the plan (autosave and `.seegmap`), and
-  **Mirror to R/L** carries them to the mirrored electrode.
+- **Six outlines.** For each electrode, choose **Off**, **Bottom-up**, **Top-down**, **Left
+  lateral**, **Left medial**, **Right lateral** or **Right medial** in the side list. Pick
+  whichever shows the shaft best: a superior-frontal electrode aimed at orbitofrontal
+  cortex, for example, reads better on a lateral or medial view. Only views with an
+  electrode on them appear on the page and in the export.
+- **Orientation.** Bottom-up and top-down have anterior at the top and an **L**/**R** on
+  each side. Seen from below, the patient's left is on the viewer's **right**, as on an
+  axial MRI slice. Lateral and medial views carry one **L** or **R** for the hemisphere.
+  The medial views are arranged as in the Planner, facing the same way as that
+  hemisphere's lateral view.
+- **Contacts.** Set the number of contacts with the −/+ buttons or by typing a number.
+  Contact 1 is the tip (the deepest).
+- **Last in brain.** Pick the last contact inside the brain from the surgeon's
+  post-implant list (e.g. "R Amy – 12"). Every contact after it is marked **outside**
+  automatically.
+- **Fitting.** Once "Last in brain" is set, the shaft is fitted to the outline: contact 1
+  stays at the tip, and the brain edge falls between the last contact in brain and the
+  next. Contacts further out are drawn at the true **3.5 mm** spacing. If every contact is
+  in brain, the 3.5 mm spacing is only ever shrunk, and only when the last contact would
+  otherwise land outside the outline.
+- **Scale check.** The row shows how far the fitted spacing is from 3.5 mm. Past ±25% it
+  warns you, because the electrode is probably too tilted for that view, or its tip is in
+  the wrong place. Try another view or move the tip.
+- **Adjusting the edge.** If the outline misleads the fit, drag the dashed **edge bar**
+  across the shaft to set the brain edge by hand. **Reset edge** in the row goes back to
+  the edge found from the outline.
+- **Marking contacts.** **Click** a contact inside the brain to cycle **grey matter → white
+  matter → noisy / lost** (⊘, for a contact lost to noise during recording). Contacts the
+  dropdown marks outside can't be clicked. **Drag** a contact or the shaft to move it, and
+  drag the **◆** handle to rotate the shaft about its tip. Undo/redo work as in the
+  Planner.
+- **Export PNG** saves one picture per view in use, e.g. `<label>-bottom-up.png` and
+  `<label>-left-lateral.png`. Each has the outline, the L/R markers, the electrode names,
+  and underneath, a legend for that view's electrodes (ID, name, entry, target and contact
+  ranges, e.g. `grey 1–3, 6 · white 4–5 · noisy 7 · outside 13–15`) with a key to the four
+  dot styles. `<label>-electrode-legend.png` holds the same legend for every placed
+  electrode. Editing handles are left out of the pictures. Some browsers ask once before
+  letting a site save several files.
+- Placements, marks and "Last in brain" are saved with the plan (autosave and
+  `.seegmap`). **Mirror to R/L** carries them to the mirrored electrode: on a lateral or
+  medial view it moves to the other hemisphere's matching view.
 
 ### Export / save
 
@@ -224,8 +244,16 @@ These drive the app without needing a rebuild for content changes (only a redepl
   in-app (Import/Export CSV or JSON), or edit this file directly before deploying to
   change the shipped default for all users.
 - `axial-inferior.png`, `axial-superior.png` — the bottom-up and top-down outlines used by
-  the Axial view. Their size, midline and scale are set in `src/lib/axialViews.ts`; update
-  those values if you replace an image.
+  the Electrode view.
+- `view-left-lateral.png`, `view-left-medial.png`, `view-right-lateral.png`,
+  `view-right-medial.png` — the lateral and medial outlines used by the Electrode view,
+  cut from `brain-template-v2.png` (with its red guide lines removed) by
+  `scripts/assets/make_sagittal_views.py`.
+- Each outline's size, midline, scale and margins are set in `src/lib/axialViews.ts`;
+  update those values if you replace an image. The Electrode view works out where the
+  brain is by flood-filling the white paper in from the image edge, so an outline must be
+  closed. Where an image crops an outline at its edge, add a `maskSeals` rectangle there
+  (as the top-down view does).
 
 ## Important limitation — please read
 
