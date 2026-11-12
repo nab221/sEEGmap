@@ -26,6 +26,8 @@ PUBLIC = os.path.join(ROOT, "public")
 FRINGE = 5
 # White margin added round each crop, so the outline never touches the image edge.
 PAD = 24
+# Anything at least this light on every channel is paper and becomes pure white.
+PAPER_MIN = 238
 # Darkest a guide line's grey edge gets; anything darker is outline and is kept.
 STROKE_MAX = 110
 
@@ -145,6 +147,14 @@ def crop(width, rgb, box):
         src = ((y0 + y) * width + x0) * 3
         out[y * w * 3 : (y + 1) * w * 3] = rgb[src : src + w * 3]
     return w, h, out
+
+
+def whiten_paper(rgb):
+    """The template's paper is slightly off-white; make it pure white so the outline sits
+    on the export's white page without a faint box round it."""
+    for k in range(0, len(rgb), 3):
+        if rgb[k] >= PAPER_MIN and rgb[k + 1] >= PAPER_MIN and rgb[k + 2] >= PAPER_MIN:
+            rgb[k] = rgb[k + 1] = rgb[k + 2] = 255
 
 
 def pad(w, h, rgb):
@@ -294,6 +304,7 @@ def main():
         w, h, part = crop(width, rgb, cell_box(quads, key, width, height))
         part = remove_red(w, h, part)
         w, h, part = pad(w, h, part)
+        whiten_paper(part)
         write_png(os.path.join(PUBLIC, name), w, h, part)
         print(name, w, h, *outline_bbox(w, h, part, white_min=128), sep=", ")
 

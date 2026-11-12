@@ -21,7 +21,7 @@ import { useBrainMask } from "../lib/useBrainMask";
 /** Pointer travel (CSS px) below which a press on a contact counts as a click, not a drag. */
 const DRAG_THRESHOLD = 4;
 
-/** Class on anything drawn only for editing, left out of exported pictures. */
+/** Class on anything drawn only for editing, left out of exported pictures (see electrodeViewPng). */
 export const EDIT_ONLY = "edit-only";
 
 /**

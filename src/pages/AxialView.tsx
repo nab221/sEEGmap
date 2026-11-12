@@ -5,7 +5,8 @@ import AxialElectrodeList from "../components/AxialElectrodeList";
 import { AXIAL_VIEWS, AXIAL_VIEW_ORDER } from "../lib/axialViews";
 import { normalizeAxial } from "../lib/axial";
 import type { AxialViewId } from "../types";
-import { exportBaseName, exportWorkspacePng } from "../lib/export/png";
+import { exportBaseName } from "../lib/export/png";
+import { exportElectrodeViewPng } from "../lib/export/electrodeViewPng";
 import { axialLegendEntries, exportAxialLegendPng } from "../lib/export/axialLegend";
 
 /**
@@ -45,7 +46,7 @@ export default function AxialView() {
         const node = viewRefs.current[v];
         if (!node) continue;
         const name = `${base}-${AXIAL_VIEWS[v].fileSlug}`;
-        await exportWorkspacePng(node, name);
+        await exportElectrodeViewPng(node, axialLegendEntries(electrodes, v), name);
         saved.push(`${name}.png`);
       }
       await exportAxialLegendPng(electrodes, `${base}-electrode-legend`);

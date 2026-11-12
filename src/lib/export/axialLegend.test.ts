@@ -65,6 +65,18 @@ describe("axialLegendEntries", () => {
     expect(axialLegendEntries([lm("a", "LTMI", 0, broken)])).toEqual([]);
   });
 
+  it("lists only one view's electrodes when asked, keeping whole-plan letters", () => {
+    const lateral = { ...axial(["grey"]), view: "leftLateral" as const };
+    const all = [lm("a", "LTMI", 0, axial(["grey"])), lm("b", "LSFOF", 1, lateral)];
+    expect(axialLegendEntries(all, "leftLateral").map((e) => [e.letter, e.electrode.name])).toEqual([["B", "LSFOF"]]);
+    expect(axialLegendEntries(all, "inferior").map((e) => e.electrode.name)).toEqual(["LTMI"]);
+  });
+
+  it("lists contacts after the last one in brain as outside", () => {
+    const a = { ...axial(["grey", "white", "grey"]), lastInBrain: 2 };
+    expect(axialLegendEntries([lm("a", "LTMI", 0, a)])[0].ranges).toBe("grey 1 · white 2 · outside 3");
+  });
+
   it("is empty when nothing is placed", () => {
     expect(axialLegendEntries([lm("a", "LTMI", 0), grid])).toEqual([]);
   });
