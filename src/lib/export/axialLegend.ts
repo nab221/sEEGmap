@@ -7,11 +7,7 @@ import { electrodeLetter } from "../nomenclature";
 import { effectiveTissue, formatTissueRanges, normalizeAxial } from "../axial";
 import { TISSUE_KEY_ORDER, TISSUE_STYLE } from "../axialStyle";
 import { LegendTable, type LegendLayout } from "./legend";
-import { canvasToPngWithDpi, downloadBlob } from "./png";
-
-export const DPI = 300;
-/** Device pixels per CSS pixel at true print size. */
-export const PRINT_U = DPI / 96;
+import { PRINT_U, downloadPagePng } from "./page";
 
 export interface AxialLegendEntry {
   electrode: Electrode;
@@ -111,7 +107,7 @@ export async function exportAxialLegendPng(allElectrodes: Electrode[], filename:
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   parts.draw(ctx, pad, pad);
-  downloadBlob(await canvasToPngWithDpi(canvas, DPI), filename);
+  await downloadPagePng(canvas, filename);
 }
 
 /** One dot drawn exactly as on the figure. */

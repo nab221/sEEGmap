@@ -14,6 +14,28 @@ import type { FigureId } from "../types";
 
 /** localStorage key for the "Legend" export tick box (a per-browser convenience). */
 const LEGEND_PREF_KEY = "seegmap.exportLegend";
+/** localStorage key for the "Notes" export tick box. */
+const NOTES_PREF_KEY = "seegmap.exportNotes";
+
+/** A tick box remembered in this browser. Storage can be unavailable (private window etc.): the choice then lasts for this page only. */
+function useStoredFlag(key: string): [boolean, (v: boolean) => void] {
+  const [value, setValue] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(key) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const set = (v: boolean) => {
+    setValue(v);
+    try {
+      localStorage.setItem(key, v ? "1" : "0");
+    } catch {
+      // Not saved; see above.
+    }
+  };
+  return [value, set];
+}
 
 export default function Planner() {
   const electrodes = useStore((s) => s.electrodes);
@@ -130,21 +152,8 @@ export default function Planner() {
     resizingRef.current = null;
   };
 
-  const [includeLegend, setIncludeLegendState] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(LEGEND_PREF_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
-  const setIncludeLegend = (v: boolean) => {
-    setIncludeLegendState(v);
-    try {
-      localStorage.setItem(LEGEND_PREF_KEY, v ? "1" : "0");
-    } catch {
-      // Storage unavailable (private window etc.): the choice lasts for this page only.
-    }
-  };
+  const [includeLegend, setIncludeLegend] = useStoredFlag(LEGEND_PREF_KEY);
+  const [includeNotes, setIncludeNotes] = useStoredFlag(NOTES_PREF_KEY);
 
   const baseFilename = () => exportBaseName(patientLabel);
 
@@ -153,7 +162,12 @@ export default function Planner() {
     setBusy(kind);
     try {
       if (kind === "png") {
-        await exportWorkspacePng(canvasWrapRef.current, baseFilename(), includeLegend ? electrodes : undefined);
+        await exportWorkspacePng(
+          canvasWrapRef.current,
+          baseFilename(),
+          patientLabel,
+          includeLegend ? electrodes : undefined
+        );
       } else if (kind === "pdf") {
         await exportWorkspacePdf({
           node: canvasWrapRef.current,
@@ -162,6 +176,7 @@ export default function Planner() {
           planNotes,
           filename: baseFilename(),
           includeLegend,
+          includeNotes,
         });
       } else {
         await exportWorkspacePptx({
@@ -292,7 +307,7 @@ export default function Planner() {
             Save .seegmap
           </button>
           <label
-            title="Draw a table of electrode names, entries and targets beside the figure in PNG and PDF exports"
+            title="Draw a table of electrode names, entries and targets beside the figure in the PNG and PDF"
             style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
           >
             <input
@@ -302,6 +317,18 @@ export default function Planner() {
               style={{ width: 14, height: 14, cursor: "pointer" }}
             />
             Legend
+          </label>
+          <label
+            title="Add the plan notes and per-electrode notes to the PDF as extra pages"
+            style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            <input
+              type="checkbox"
+              checked={includeNotes}
+              onChange={(e) => setIncludeNotes(e.target.checked)}
+              style={{ width: 14, height: 14, cursor: "pointer" }}
+            />
+            Notes in PDF
           </label>
           <button className="btn btn-sm" disabled={busy !== null} onClick={() => runExport("png")}>
             {busy === "png" ? "Exporting…" : "Export PNG"}

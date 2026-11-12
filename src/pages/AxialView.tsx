@@ -6,7 +6,7 @@ import { AXIAL_VIEWS, AXIAL_VIEW_ORDER } from "../lib/axialViews";
 import { normalizeAxial } from "../lib/axial";
 import type { AxialViewId } from "../types";
 import { exportBaseName } from "../lib/export/png";
-import { exportElectrodeViewPng } from "../lib/export/electrodeViewPng";
+import { exportElectrodeViewPdf, exportElectrodeViewPng, type ElectrodeViewPage } from "../lib/export/electrodeViewPng";
 import { axialLegendEntries, exportAxialLegendPng } from "../lib/export/axialLegend";
 
 /**
@@ -22,7 +22,7 @@ export default function AxialView() {
   const electrodes = useStore((s) => s.electrodes);
   const patientLabel = useStore((s) => s.patientLabel);
   const [showAllNumbers, setShowAllNumbers] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"png" | "pdf" | null>(null);
   const viewRefs = useRef<Partial<Record<AxialViewId, HTMLDivElement | null>>>({});
   const placedCount = axialLegendEntries(electrodes).length;
   const usedViews = useMemo(() => {
@@ -35,18 +35,27 @@ export default function AxialView() {
     return AXIAL_VIEW_ORDER.filter((v) => used.has(v));
   }, [electrodes]);
 
-  /** Save each view in use as its own PNG, then the combined legend. */
-  const runExport = async () => {
+  /** Each view in use with its node and legend entries, in display order. */
+  const exportViews = (): (ElectrodeViewPage & { slug: string })[] =>
+    usedViews.flatMap((v) => {
+      const node = viewRefs.current[v];
+      return node ? [{ node, entries: axialLegendEntries(electrodes, v), slug: AXIAL_VIEWS[v].fileSlug }] : [];
+    });
+
+  /** PNG: each view in use as its own page, then the combined legend. PDF: every view, one page each. */
+  const runExport = async (kind: "png" | "pdf") => {
     if (placedCount === 0) return;
     const base = exportBaseName(patientLabel);
-    setBusy(true);
+    setBusy(kind);
     try {
+      if (kind === "pdf") {
+        await exportElectrodeViewPdf(exportViews(), patientLabel, `${base}-electrode-views`);
+        return;
+      }
       const saved: string[] = [];
-      for (const v of usedViews) {
-        const node = viewRefs.current[v];
-        if (!node) continue;
-        const name = `${base}-${AXIAL_VIEWS[v].fileSlug}`;
-        await exportElectrodeViewPng(node, axialLegendEntries(electrodes, v), name);
+      for (const view of exportViews()) {
+        const name = `${base}-${view.slug}`;
+        await exportElectrodeViewPng(view, patientLabel, name);
         saved.push(`${name}.png`);
       }
       await exportAxialLegendPng(electrodes, `${base}-electrode-legend`);
@@ -59,7 +68,7 @@ export default function AxialView() {
       console.error(err);
       window.alert("Export failed. See console for details.");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
@@ -115,12 +124,20 @@ export default function AxialView() {
           </label>
           <div style={{ flex: 1 }} />
           <button
-            className="btn btn-sm btn-primary"
-            disabled={busy || placedCount === 0}
-            onClick={runExport}
-            title={placedCount === 0 ? "Put at least one electrode on a view first" : "Saves each view as its own PNG with its legend, plus a combined legend"}
+            className="btn btn-sm"
+            disabled={busy !== null || placedCount === 0}
+            onClick={() => runExport("png")}
+            title={placedCount === 0 ? "Put at least one electrode on a view first" : "Saves each view as its own A4 PNG with its legend, plus a combined legend"}
           >
-            {busy ? "Exporting…" : "Export PNG"}
+            {busy === "png" ? "Exporting…" : "Export PNG"}
+          </button>
+          <button
+            className="btn btn-sm btn-primary"
+            disabled={busy !== null || placedCount === 0}
+            onClick={() => runExport("pdf")}
+            title={placedCount === 0 ? "Put at least one electrode on a view first" : "Saves one PDF with an A4 page per view, each with its legend"}
+          >
+            {busy === "pdf" ? "Exporting…" : "Export PDF"}
           </button>
         </div>
 
