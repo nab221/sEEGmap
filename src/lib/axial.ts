@@ -7,6 +7,7 @@
 
 import type { AxialPlacement, Point, Tissue } from "../types";
 import { isAxialViewId, type AxialViewConfig } from "./axialViews";
+import { findCrossingPx, type BrainMask } from "./brainMask";
 
 export const CONTACT_SPACING_MM = 3.5;
 export const DEFAULT_CONTACTS = 10;
@@ -131,9 +132,80 @@ export function cycleContact(p: AxialPlacement, index: number): AxialPlacement {
   return { ...p, tissue };
 }
 
-/** Contact spacing in native pixels. */
-function spacingPx(view: AxialViewConfig): number {
+/** True 3.5 mm contact spacing on a view, in native pixels. */
+export function nominalSpacingPx(view: AxialViewConfig): number {
   return CONTACT_SPACING_MM / view.mmPerPx;
+}
+
+/** How far the fitted spacing may stray from the true scale before the row warns. */
+export const OFF_SCALE_TOLERANCE = 0.25;
+
+/**
+ * How an electrode's contacts are spaced on the figure.
+ *  - nominal:     true 3.5 mm spacing.
+ *  - fitted:      contacts 1..N+1 stretched or squeezed so the outline falls halfway
+ *                 between contact N ("last in brain") and N+1; the rest at 3.5 mm.
+ *  - shrunk:      every contact in brain, squeezed so the last one stays inside.
+ *  - no-crossing: "last in brain" is set but no outline was found along the shaft.
+ */
+export interface SpacingFit {
+  /** Spacing from the tip out to the first outside contact, in native px. */
+  innerPx: number;
+  /** Spacing between outside contacts, in native px. */
+  outerPx: number;
+  /** innerPx over the true spacing. */
+  ratio: number;
+  /** Distance from the tip to the brain edge used, in native px. */
+  crossingPx: number | null;
+  status: "nominal" | "fitted" | "shrunk" | "no-crossing";
+}
+
+export function fitSpacing(a: {
+  nominalPx: number;
+  contacts: number;
+  lastInBrain?: number;
+  crossingPx: number | null;
+}): SpacingFit {
+  const { nominalPx, contacts } = a;
+  const crossing = a.crossingPx !== null && a.crossingPx > 0 ? a.crossingPx : null;
+  const make = (innerPx: number, outerPx: number, status: SpacingFit["status"]): SpacingFit => ({
+    innerPx,
+    outerPx,
+    ratio: innerPx / nominalPx,
+    crossingPx: crossing,
+    status,
+  });
+  const n = a.lastInBrain;
+  if (n !== undefined && n >= 1 && n < contacts) {
+    if (crossing === null) return make(nominalPx, nominalPx, "no-crossing");
+    return make(crossing / (n - 0.5), nominalPx, "fitted");
+  }
+  if (crossing !== null && (contacts - 0.5) * nominalPx > crossing) {
+    const inner = crossing / (contacts - 0.5);
+    return make(inner, inner, "shrunk");
+  }
+  return make(nominalPx, nominalPx, "nominal");
+}
+
+function nominalFit(view: AxialViewConfig): SpacingFit {
+  const px = nominalSpacingPx(view);
+  return { innerPx: px, outerPx: px, ratio: 1, crossingPx: null, status: "nominal" };
+}
+
+/** `lastInBrain` when it marks some contacts outside, else null. */
+function outsideFrom(contacts: number, lastInBrain: number | undefined): number | null {
+  return lastInBrain !== undefined && lastInBrain >= 1 && lastInBrain < contacts ? lastInBrain : null;
+}
+
+/**
+ * Distance of each contact from the tip, in native px: the fitted spacing up to the
+ * first outside contact (N+1), then the outside spacing.
+ */
+export function contactDistancesPx(contacts: number, lastInBrain: number | undefined, fit: SpacingFit): number[] {
+  const n = outsideFrom(contacts, lastInBrain);
+  return Array.from({ length: contacts }, (_, i) =>
+    n === null || i <= n ? i * fit.innerPx : n * fit.innerPx + (i - n) * fit.outerPx
+  );
 }
 
 /** Unit direction from tip outward, in native pixels. Falls back to pointing away from the midline. */
@@ -146,24 +218,60 @@ function directionPx(p: AxialPlacement, view: AxialViewConfig): Point {
   return { x: tipPx > view.midlineX ? 1 : -1, y: 0 };
 }
 
-/** Point `steps` contact spacings out from the tip, normalized. */
-function alongShaft(p: AxialPlacement, view: AxialViewConfig, steps: number): Point {
+/** Point `distPx` native pixels out from the tip along the shaft, normalized. */
+function alongShaft(p: AxialPlacement, view: AxialViewConfig, distPx: number): Point {
   const d = directionPx(p, view);
-  const s = spacingPx(view) * steps;
   return {
-    x: p.tip.x + (d.x * s) / view.width,
-    y: p.tip.y + (d.y * s) / view.height,
+    x: p.tip.x + (d.x * distPx) / view.width,
+    y: p.tip.y + (d.y * distPx) / view.height,
   };
 }
 
-/** Normalized position of every contact; index 0 is the tip (contact 1). */
-export function contactPositions(p: AxialPlacement, view: AxialViewConfig): Point[] {
-  return Array.from({ length: p.contacts }, (_, i) => alongShaft(p, view, i));
+/**
+ * Fit an electrode to its view's outline. The edge is the hand-set `edgeDist` when there
+ * is one, else where the shaft first leaves the brain mask. With no mask yet (still
+ * loading) the shaft stays at true spacing, without a warning.
+ */
+export function shaftFit(p: AxialPlacement, view: AxialViewConfig, mask: BrainMask | null): SpacingFit {
+  const nominalPx = nominalSpacingPx(view);
+  let crossingPx: number | null;
+  if (p.edgeDist !== undefined) {
+    crossingPx = p.edgeDist;
+  } else if (mask) {
+    const tipPx = { x: p.tip.x * view.width, y: p.tip.y * view.height };
+    crossingPx = findCrossingPx(mask, tipPx, directionPx(p, view), (p.contacts + 2) * nominalPx);
+  } else {
+    return nominalFit(view);
+  }
+  return fitSpacing({ nominalPx, contacts: p.contacts, lastInBrain: p.lastInBrain, crossingPx });
 }
 
-/** Where the direction handle sits: one spacing beyond the last contact. */
-export function handlePosition(p: AxialPlacement, view: AxialViewConfig): Point {
-  return alongShaft(p, view, p.contacts);
+/** Whether the fit strays more than OFF_SCALE_TOLERANCE from the true scale. */
+export function isOffScale(fit: SpacingFit): boolean {
+  return (fit.status === "fitted" || fit.status === "shrunk") && Math.abs(fit.ratio - 1) > OFF_SCALE_TOLERANCE;
+}
+
+/** Normalized position of every contact; index 0 is the tip (contact 1). True spacing unless a fit is given. */
+export function contactPositions(p: AxialPlacement, view: AxialViewConfig, fit: SpacingFit = nominalFit(view)): Point[] {
+  return contactDistancesPx(p.contacts, p.lastInBrain, fit).map((d) => alongShaft(p, view, d));
+}
+
+/** Where the rotate handle sits: one spacing beyond the last contact. */
+export function handlePosition(p: AxialPlacement, view: AxialViewConfig, fit: SpacingFit = nominalFit(view)): Point {
+  const d = contactDistancesPx(p.contacts, p.lastInBrain, fit);
+  const step = outsideFrom(p.contacts, p.lastInBrain) === null ? fit.innerPx : fit.outerPx;
+  return alongShaft(p, view, d[d.length - 1] + step);
+}
+
+/** The brain edge the fit used, normalized, or null when there is none. */
+export function edgePosition(p: AxialPlacement, view: AxialViewConfig, fit: SpacingFit): Point | null {
+  return fit.crossingPx === null ? null : alongShaft(p, view, fit.crossingPx);
+}
+
+/** Signed distance (native px) of a normalized point along the shaft from the tip. */
+export function distanceAlongShaft(p: AxialPlacement, view: AxialViewConfig, pt: Point): number {
+  const d = directionPx(p, view);
+  return (pt.x - p.tip.x) * view.width * d.x + (pt.y - p.tip.y) * view.height * d.y;
 }
 
 /** Move the whole shaft. The tip stays on the image; the direction is unchanged. */
