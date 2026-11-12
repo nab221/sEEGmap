@@ -1,4 +1,4 @@
-// Geometry and tissue helpers for the Axial view page.
+// Geometry and contact-state helpers for the Electrode view page.
 //
 // Points are normalized 0..1 on a view's image, but distances are worked out in the
 // image's native pixels so contact spacing stays true on a non-square image. A shaft is
@@ -6,7 +6,8 @@
 // outward, and are never clamped -- contacts past the outline are the point.
 
 import type { AxialPlacement, Point, Tissue } from "../types";
-import type { AxialViewConfig } from "./axialViews";
+import { isAxialViewId, type AxialViewConfig } from "./axialViews";
+import { findCrossingPx, type BrainMask } from "./brainMask";
 
 export const CONTACT_SPACING_MM = 3.5;
 export const DEFAULT_CONTACTS = 10;
@@ -15,7 +16,8 @@ export const MAX_CONTACTS = 24;
 
 export type Hemisphere = "L" | "R";
 
-const TISSUE_ORDER: Tissue[] = ["grey", "white", "outside"];
+/** Every state, in legend and range order. */
+export const TISSUE_ORDER: Tissue[] = ["grey", "white", "noisy", "outside"];
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
@@ -25,9 +27,44 @@ export function hemisphereOf(name: string): Hemisphere | null {
   return c === "L" || c === "R" ? c : null;
 }
 
-/** Next state when a contact is clicked: grey → white → outside → grey. */
-export function nextTissue(t: Tissue): Tissue {
-  return TISSUE_ORDER[(TISSUE_ORDER.indexOf(t) + 1) % TISSUE_ORDER.length];
+/**
+ * Next state when a contact is clicked. With `allowOutside`: grey → white → noisy →
+ * outside → grey. Without it (the "last in brain" dropdown owns outside): grey → white →
+ * noisy → grey, and a stored outside is read as grey first.
+ */
+export function nextTissue(t: Tissue, allowOutside: boolean): Tissue {
+  const cycle: Tissue[] = allowOutside ? TISSUE_ORDER : ["grey", "white", "noisy"];
+  const from = cycle.includes(t) ? t : "grey";
+  return cycle[(cycle.indexOf(from) + 1) % cycle.length];
+}
+
+/**
+ * The state each contact is drawn and listed with. When "last in brain" is N, contacts
+ * after N are outside and a stored outside at 1..N reads as grey; otherwise the stored
+ * marks are used as they are.
+ */
+export function effectiveTissue(p: AxialPlacement): Tissue[] {
+  const tissue = resizeTissue(p.tissue, p.contacts);
+  if (p.lastInBrain === undefined) return tissue;
+  const n = p.lastInBrain;
+  return tissue.map((t, i) => (i >= n ? "outside" : t === "outside" ? "grey" : t));
+}
+
+/**
+ * Set "last contact in brain". Undefined, non-numbers and values below 1 clear it;
+ * others are rounded and capped at the contact count.
+ */
+export function setLastInBrain(p: AxialPlacement, n: number | undefined): AxialPlacement {
+  const { lastInBrain: _drop, ...rest } = p;
+  const v = cleanLastInBrain(n, p.contacts);
+  return v === undefined ? rest : { ...rest, lastInBrain: v };
+}
+
+function cleanLastInBrain(n: unknown, contacts: number): number | undefined {
+  if (typeof n !== "number" || !Number.isFinite(n)) return undefined;
+  const v = Math.round(n);
+  if (v < 1) return undefined;
+  return Math.min(v, contacts);
 }
 
 function clampContacts(n: unknown): number {
@@ -59,31 +96,128 @@ function cleanTissue(tissue: unknown, contacts: number): Tissue[] {
  */
 export function normalizeAxial(p: AxialPlacement | null | undefined): AxialPlacement | null {
   if (!p || typeof p !== "object") return null;
-  if (p.view !== "inferior" && p.view !== "superior") return null;
+  if (!isAxialViewId(p.view)) return null;
   if (!isPoint(p.tip)) return null;
   const tip = { x: p.tip.x, y: p.tip.y };
   // A missing direction falls back to the tip, which draws pointing away from the midline.
   const toward = isPoint(p.toward) ? { x: p.toward.x, y: p.toward.y } : { ...tip };
   const contacts = clampContacts(p.contacts);
-  return { view: p.view, tip, toward, contacts, tissue: cleanTissue(p.tissue, contacts) };
+  const out: AxialPlacement = { view: p.view, tip, toward, contacts, tissue: cleanTissue(p.tissue, contacts) };
+  const last = cleanLastInBrain(p.lastInBrain, contacts);
+  if (last !== undefined) out.lastInBrain = last;
+  if (typeof p.edgeDist === "number" && Number.isFinite(p.edgeDist) && p.edgeDist > 0) out.edgeDist = p.edgeDist;
+  return out;
 }
 
+/** Change the contact count, keeping marks and capping "last in brain" at the new count. */
 export function withContactCount(p: AxialPlacement, n: number): AxialPlacement {
   const contacts = clampContacts(n);
-  return { ...p, contacts, tissue: resizeTissue(p.tissue, contacts) };
+  const next: AxialPlacement = { ...p, contacts, tissue: resizeTissue(p.tissue, contacts) };
+  return p.lastInBrain === undefined ? next : setLastInBrain(next, p.lastInBrain);
 }
 
-/** Cycle contact `index` (0-based) to its next tissue state. Out-of-range indexes change nothing. */
+/**
+ * Cycle contact `index` (0-based) to its next state. Out-of-range indexes change nothing,
+ * nor do contacts that "last in brain" marks outside.
+ */
 export function cycleContact(p: AxialPlacement, index: number): AxialPlacement {
   if (index < 0 || index >= p.contacts) return p;
   const tissue = resizeTissue(p.tissue, p.contacts);
-  tissue[index] = nextTissue(tissue[index]);
+  if (p.lastInBrain === undefined) {
+    tissue[index] = nextTissue(tissue[index], true);
+  } else {
+    if (index >= p.lastInBrain) return p;
+    tissue[index] = nextTissue(tissue[index], false);
+  }
   return { ...p, tissue };
 }
 
-/** Contact spacing in native pixels. */
-function spacingPx(view: AxialViewConfig): number {
+/** True 3.5 mm contact spacing on a view, in native pixels. */
+export function nominalSpacingPx(view: AxialViewConfig): number {
   return CONTACT_SPACING_MM / view.mmPerPx;
+}
+
+/** How far the fitted spacing may stray from the true scale before the row warns. */
+export const OFF_SCALE_TOLERANCE = 0.25;
+
+/**
+ * The drawn spacing never strays further than this from the true scale, whatever the fit
+ * asks for: a far edge over a small "last in brain" would otherwise stretch the shaft off
+ * the figure. The row still reports (and warns about) the real ratio.
+ */
+const DRAW_RATIO_MIN = 0.5;
+const DRAW_RATIO_MAX = 2;
+
+/**
+ * How an electrode's contacts are spaced on the figure.
+ *  - nominal:     true 3.5 mm spacing.
+ *  - fitted:      contacts 1..N+1 stretched or squeezed so the outline falls halfway
+ *                 between contact N ("last in brain") and N+1; the rest at 3.5 mm.
+ *  - shrunk:      every contact in brain, squeezed so the last one stays inside.
+ *  - no-crossing: "last in brain" is set but no outline was found along the shaft.
+ */
+export interface SpacingFit {
+  /** Spacing from the tip out to the first outside contact, in native px. */
+  innerPx: number;
+  /** Spacing between outside contacts, in native px. */
+  outerPx: number;
+  /** innerPx over the true spacing. */
+  ratio: number;
+  /** Distance from the tip to the brain edge used, in native px. */
+  crossingPx: number | null;
+  status: "nominal" | "fitted" | "shrunk" | "no-crossing";
+}
+
+export function fitSpacing(a: {
+  nominalPx: number;
+  contacts: number;
+  lastInBrain?: number;
+  crossingPx: number | null;
+}): SpacingFit {
+  const { nominalPx, contacts } = a;
+  const crossing = a.crossingPx !== null && a.crossingPx > 0 ? a.crossingPx : null;
+  const make = (innerPx: number, outerPx: number, status: SpacingFit["status"]): SpacingFit => {
+    const ratio = innerPx / nominalPx;
+    const drawn = nominalPx * Math.min(DRAW_RATIO_MAX, Math.max(DRAW_RATIO_MIN, ratio));
+    return {
+      innerPx: drawn,
+      outerPx: status === "shrunk" ? drawn : outerPx,
+      ratio,
+      crossingPx: crossing,
+      status,
+    };
+  };
+  const n = a.lastInBrain;
+  if (n !== undefined && n >= 1 && n < contacts) {
+    if (crossing === null) return make(nominalPx, nominalPx, "no-crossing");
+    return make(crossing / (n - 0.5), nominalPx, "fitted");
+  }
+  if (crossing !== null && (contacts - 0.5) * nominalPx > crossing) {
+    const inner = crossing / (contacts - 0.5);
+    return make(inner, inner, "shrunk");
+  }
+  return make(nominalPx, nominalPx, "nominal");
+}
+
+function nominalFit(view: AxialViewConfig): SpacingFit {
+  const px = nominalSpacingPx(view);
+  return { innerPx: px, outerPx: px, ratio: 1, crossingPx: null, status: "nominal" };
+}
+
+/** `lastInBrain` when it marks some contacts outside, else null. */
+function outsideFrom(contacts: number, lastInBrain: number | undefined): number | null {
+  return lastInBrain !== undefined && lastInBrain >= 1 && lastInBrain < contacts ? lastInBrain : null;
+}
+
+/**
+ * Distance of each contact from the tip, in native px: the fitted spacing up to the
+ * first outside contact (N+1), then the outside spacing.
+ */
+export function contactDistancesPx(contacts: number, lastInBrain: number | undefined, fit: SpacingFit): number[] {
+  const n = outsideFrom(contacts, lastInBrain);
+  return Array.from({ length: contacts }, (_, i) =>
+    n === null || i <= n ? i * fit.innerPx : n * fit.innerPx + (i - n) * fit.outerPx
+  );
 }
 
 /** Unit direction from tip outward, in native pixels. Falls back to pointing away from the midline. */
@@ -96,24 +230,86 @@ function directionPx(p: AxialPlacement, view: AxialViewConfig): Point {
   return { x: tipPx > view.midlineX ? 1 : -1, y: 0 };
 }
 
-/** Point `steps` contact spacings out from the tip, normalized. */
-function alongShaft(p: AxialPlacement, view: AxialViewConfig, steps: number): Point {
+/** Point `distPx` native pixels out from the tip along the shaft, normalized. */
+function alongShaft(p: AxialPlacement, view: AxialViewConfig, distPx: number): Point {
   const d = directionPx(p, view);
-  const s = spacingPx(view) * steps;
   return {
-    x: p.tip.x + (d.x * s) / view.width,
-    y: p.tip.y + (d.y * s) / view.height,
+    x: p.tip.x + (d.x * distPx) / view.width,
+    y: p.tip.y + (d.y * distPx) / view.height,
   };
 }
 
-/** Normalized position of every contact; index 0 is the tip (contact 1). */
-export function contactPositions(p: AxialPlacement, view: AxialViewConfig): Point[] {
-  return Array.from({ length: p.contacts }, (_, i) => alongShaft(p, view, i));
+/**
+ * Fit an electrode to its view's outline. The edge is the hand-set `edgeDist` when there
+ * is one, else where the shaft first leaves the brain mask. With no mask yet (still
+ * loading), or for an older plan whose outside contacts were marked by hand, the shaft
+ * stays at true spacing, without a warning.
+ */
+export function shaftFit(p: AxialPlacement, view: AxialViewConfig, mask: BrainMask | null): SpacingFit {
+  const nominalPx = nominalSpacingPx(view);
+  // A plan from before the dropdown, with outside contacts marked by hand: leave it at true
+  // spacing, as it was drawn then. Shrinking would pull those contacts back inside.
+  if (p.lastInBrain === undefined && p.edgeDist === undefined && p.tissue.includes("outside")) {
+    return nominalFit(view);
+  }
+  let crossingPx: number | null;
+  if (p.edgeDist !== undefined) {
+    crossingPx = p.edgeDist;
+  } else if (mask) {
+    const tipPx = { x: p.tip.x * view.width, y: p.tip.y * view.height };
+    // Search the whole image: an edge far beyond the last contact should show up as an
+    // off-scale fit (wrong view or tip), not as "not found".
+    crossingPx = findCrossingPx(mask, tipPx, directionPx(p, view), Math.hypot(view.width, view.height));
+  } else {
+    return nominalFit(view);
+  }
+  return fitSpacing({ nominalPx, contacts: p.contacts, lastInBrain: p.lastInBrain, crossingPx });
 }
 
-/** Where the direction handle sits: one spacing beyond the last contact. */
-export function handlePosition(p: AxialPlacement, view: AxialViewConfig): Point {
-  return alongShaft(p, view, p.contacts);
+/** Whether the fit strays more than OFF_SCALE_TOLERANCE from the true scale. */
+export function isOffScale(fit: SpacingFit): boolean {
+  return (fit.status === "fitted" || fit.status === "shrunk") && Math.abs(fit.ratio - 1) > OFF_SCALE_TOLERANCE;
+}
+
+/** Normalized position of every contact; index 0 is the tip (contact 1). True spacing unless a fit is given. */
+export function contactPositions(p: AxialPlacement, view: AxialViewConfig, fit: SpacingFit = nominalFit(view)): Point[] {
+  return contactDistancesPx(p.contacts, p.lastInBrain, fit).map((d) => alongShaft(p, view, d));
+}
+
+/** Where the rotate handle sits: one spacing beyond the last contact. */
+export function handlePosition(p: AxialPlacement, view: AxialViewConfig, fit: SpacingFit = nominalFit(view)): Point {
+  const d = contactDistancesPx(p.contacts, p.lastInBrain, fit);
+  const step = outsideFrom(p.contacts, p.lastInBrain) === null ? fit.innerPx : fit.outerPx;
+  return alongShaft(p, view, d[d.length - 1] + step);
+}
+
+/** The brain edge the fit used, normalized, or null when there is none. */
+export function edgePosition(p: AxialPlacement, view: AxialViewConfig, fit: SpacingFit): Point | null {
+  return fit.crossingPx === null ? null : alongShaft(p, view, fit.crossingPx);
+}
+
+/**
+ * Where the draggable edge bar goes, in native px from the tip: the edge the fit used, or,
+ * when no edge was found, the true-scale position halfway between the last contact in
+ * brain and the next, so the edge can still be set by hand. Null when "last in brain"
+ * marks nothing outside (no bar).
+ */
+export function edgeHandleDistPx(p: AxialPlacement, view: AxialViewConfig, fit: SpacingFit): number | null {
+  const n = outsideFrom(p.contacts, p.lastInBrain);
+  if (n === null) return null;
+  return fit.crossingPx ?? (n - 0.5) * nominalSpacingPx(view);
+}
+
+/** The edge bar's position, normalized, or null when there is no bar. */
+export function edgeHandlePosition(p: AxialPlacement, view: AxialViewConfig, fit: SpacingFit): Point | null {
+  const d = edgeHandleDistPx(p, view, fit);
+  return d === null ? null : alongShaft(p, view, d);
+}
+
+/** Signed distance (native px) of a normalized point along the shaft from the tip. */
+export function distanceAlongShaft(p: AxialPlacement, view: AxialViewConfig, pt: Point): number {
+  const d = directionPx(p, view);
+  return (pt.x - p.tip.x) * view.width * d.x + (pt.y - p.tip.y) * view.height * d.y;
 }
 
 /** Move the whole shaft. The tip stays on the image; the direction is unchanged. */
@@ -125,32 +321,48 @@ export function translateAxial(p: AxialPlacement, dx: number, dy: number): Axial
 }
 
 /**
- * First placement on a view: tip in the electrode's hemisphere *as that view shows it*,
- * shaft pointing laterally out of the brain. Names with no L/R go on the viewer's left.
+ * First placement on a view. Axial views: tip in the electrode's hemisphere *as that view
+ * shows it*, shaft pointing laterally out of the brain; names with no L/R go on the
+ * viewer's left. Sagittal views: tip near the centre, shaft pointing up. Contacts, marks
+ * and "last in brain" carry over from `keep`; a hand-set edge never does, as it belongs
+ * to the old view.
  */
 export function defaultAxialPlacement(
   view: AxialViewConfig,
   hemisphere: Hemisphere | null,
-  keep?: Pick<AxialPlacement, "contacts" | "tissue">
+  keep?: Pick<AxialPlacement, "contacts" | "tissue" | "lastInBrain">
 ): AxialPlacement {
+  const contacts = keep ? clampContacts(keep.contacts) : DEFAULT_CONTACTS;
+  const tissue = cleanTissue(keep?.tissue, contacts);
+  const withKept = (p: AxialPlacement) => setLastInBrain(p, keep?.lastInBrain);
+  if (view.kind === "sagittal") {
+    return withKept({ view: view.id, tip: { x: 0.5, y: 0.55 }, toward: { x: 0.5, y: 0.3 }, contacts, tissue });
+  }
   const onViewerLeft =
     hemisphere === null || (hemisphere === "L") === view.patientLeftOnViewerLeft;
   const sign = onViewerLeft ? -1 : 1;
   const tipX = view.midlineX + sign * 0.2 * view.width;
   const towardX = tipX + sign * 0.1 * view.width;
-  const contacts = keep ? clampContacts(keep.contacts) : DEFAULT_CONTACTS;
-  const tissue = cleanTissue(keep?.tissue, contacts);
-  return {
+  return withKept({
     view: view.id,
     tip: { x: tipX / view.width, y: 0.5 },
     toward: { x: towardX / view.width, y: 0.5 },
     contacts,
     tissue,
-  };
+  });
 }
 
-/** Reflect a placement across the view's midline, keeping contacts and marks. */
+/**
+ * Mirror a placement to the other hemisphere, keeping contacts, marks, "last in brain"
+ * and any hand-set edge. Axial views reflect across their own midline. Sagittal views
+ * move to the other hemisphere's matching view, flipped left to right (the left and
+ * right images face opposite ways).
+ */
 export function mirrorAxial(p: AxialPlacement, view: AxialViewConfig): AxialPlacement {
+  if (view.kind === "sagittal" && view.counterpart) {
+    const flipX = (pt: Point): Point => ({ x: 1 - pt.x, y: pt.y });
+    return { ...p, view: view.counterpart, tip: flipX(p.tip), toward: flipX(p.toward), tissue: [...p.tissue] };
+  }
   const mid = view.midlineX / view.width;
   const flip = (pt: Point): Point => ({ x: 2 * mid - pt.x, y: pt.y });
   const tip = flip(p.tip);

@@ -43,7 +43,7 @@ export default function App() {
           </NavLink>
           <nav style={{ display: "flex", gap: 4 }}>
             <NavTab to="/planner">Planner</NavTab>
-            <NavTab to="/axial">Axial view</NavTab>
+            <NavTab to="/axial">Electrode view</NavTab>
             <NavTab to="/settings">Settings</NavTab>
             <NavTab to="/settings/anatomy">Anatomy Library</NavTab>
           </nav>
