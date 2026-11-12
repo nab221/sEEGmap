@@ -3,7 +3,6 @@ import { useStore } from "../store/useStore";
 import AxialCanvas from "../components/AxialCanvas";
 import AxialElectrodeList from "../components/AxialElectrodeList";
 import { AXIAL_VIEWS, AXIAL_VIEW_ORDER } from "../lib/axialViews";
-import { SCHEMATIC_NOTE } from "../lib/axialStyle";
 import { exportBaseName, exportWorkspacePng } from "../lib/export/png";
 import { axialLegendEntries, exportAxialLegendPng } from "../lib/export/axialLegend";
 
@@ -111,15 +110,10 @@ export default function AxialView() {
             <div style={{ display: "flex", gap: 40, alignItems: "flex-start" }}>
               {AXIAL_VIEW_ORDER.map((v) => (
                 <div key={v} style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ textAlign: "center", fontSize: 14, fontWeight: 700, marginBottom: 8, color: "#182430" }}>
-                    {AXIAL_VIEWS[v].label}{" "}
-                    <span style={{ fontWeight: 400, color: "#647480" }}>({AXIAL_VIEWS[v].caption})</span>
-                  </div>
                   <AxialCanvas viewId={v} showAllNumbers={showAllNumbers} />
                 </div>
               ))}
             </div>
-            <div style={{ marginTop: 14, fontSize: 11, color: "#647480", textAlign: "center" }}>{SCHEMATIC_NOTE}</div>
           </div>
           </div>
         </div>

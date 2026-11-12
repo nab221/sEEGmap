@@ -9,19 +9,24 @@ import {
   handlePosition,
   hemisphereOf,
   mirrorAxial,
+  effectiveTissue,
   nextTissue,
   normalizeAxial,
   resizeTissue,
+  setLastInBrain,
   translateAxial,
   withContactCount,
 } from "./axial";
+import { viewPickerOrder } from "./axialViews";
 
 // 3.5 mm / 0.35 mm per px = 10 px contact spacing.
 const V: AxialViewConfig = {
   id: "superior",
+  kind: "axial",
   label: "",
-  caption: "",
+  fileSlug: "",
   imageFile: "",
+  margin: { x: 0.2, y: 0.06 },
   width: 400,
   height: 500,
   midlineX: 200,
@@ -29,6 +34,13 @@ const V: AxialViewConfig = {
   patientLeftOnViewerLeft: true,
 };
 const VI: AxialViewConfig = { ...V, id: "inferior", patientLeftOnViewerLeft: false };
+const VL: AxialViewConfig = {
+  ...V,
+  id: "leftLateral",
+  kind: "sagittal",
+  hemisphere: "L",
+  counterpart: "rightLateral",
+};
 
 const p: AxialPlacement = {
   view: "superior",
@@ -85,10 +97,16 @@ describe("handlePosition", () => {
 });
 
 describe("tissue", () => {
-  it("cycles grey → white → outside → grey", () => {
-    expect(nextTissue("grey")).toBe("white");
-    expect(nextTissue("white")).toBe("outside");
-    expect(nextTissue("outside")).toBe("grey");
+  it("cycles grey → white → noisy → outside → grey when outside is clickable", () => {
+    expect(nextTissue("grey", true)).toBe("white");
+    expect(nextTissue("white", true)).toBe("noisy");
+    expect(nextTissue("noisy", true)).toBe("outside");
+    expect(nextTissue("outside", true)).toBe("grey");
+  });
+
+  it("cycles grey → white → noisy → grey when the dropdown owns outside", () => {
+    expect(nextTissue("noisy", false)).toBe("grey");
+    expect(nextTissue("outside", false)).toBe("white");
   });
 
   it("resizes keeping marks and padding with grey, clamped to 1..24", () => {
@@ -144,7 +162,73 @@ describe("tissue", () => {
   });
 });
 
+describe("last contact in brain", () => {
+  const p5: AxialPlacement = {
+    ...p,
+    contacts: 5,
+    tissue: ["grey", "outside", "white", "grey", "noisy"],
+  };
+
+  it("reads contacts above N as outside and stored outside below it as grey", () => {
+    expect(effectiveTissue({ ...p5, lastInBrain: 3 })).toEqual(["grey", "grey", "white", "outside", "outside"]);
+  });
+
+  it("returns stored marks unchanged when it isn't set", () => {
+    expect(effectiveTissue(p5)).toEqual(["grey", "outside", "white", "grey", "noisy"]);
+  });
+
+  it("ignores clicks on contacts it marks outside", () => {
+    const set = { ...p5, lastInBrain: 3 };
+    expect(cycleContact(set, 3)).toEqual(set);
+    expect(cycleContact(set, 0).tissue[0]).toBe("white");
+    expect(cycleContact(set, 1).tissue[1]).toBe("white");
+  });
+
+  it("clamps to a lowered contact count", () => {
+    expect(withContactCount({ ...p5, lastInBrain: 5 }, 3).lastInBrain).toBe(3);
+    expect(withContactCount({ ...p5, lastInBrain: 2 }, 4).lastInBrain).toBe(2);
+  });
+
+  it("sets, rounds and clears", () => {
+    expect(setLastInBrain(p5, 2.6).lastInBrain).toBe(3);
+    expect(setLastInBrain(p5, 9).lastInBrain).toBe(5);
+    expect("lastInBrain" in setLastInBrain({ ...p5, lastInBrain: 2 }, undefined)).toBe(false);
+    expect("lastInBrain" in setLastInBrain(p5, 0)).toBe(false);
+    expect("lastInBrain" in setLastInBrain(p5, NaN)).toBe(false);
+  });
+
+  it("is normalized from storage", () => {
+    expect(normalizeAxial({ ...p5, lastInBrain: 4 })!.lastInBrain).toBe(4);
+    expect(normalizeAxial({ ...p5, lastInBrain: 99 })!.lastInBrain).toBe(5);
+    expect(normalizeAxial({ ...p5, lastInBrain: "x" as unknown as number })!.lastInBrain).toBeUndefined();
+    expect(normalizeAxial({ ...p5, edgeDist: -4 })!.edgeDist).toBeUndefined();
+    expect(normalizeAxial({ ...p5, edgeDist: 12.5 })!.edgeDist).toBe(12.5);
+    expect(normalizeAxial({ ...p5, view: "rightMedial" })!.view).toBe("rightMedial");
+  });
+
+  it("leaves an old-format placement exactly as it was", () => {
+    const old: AxialPlacement = {
+      view: "inferior",
+      tip: { x: 0.4, y: 0.5 },
+      toward: { x: 0.6, y: 0.5 },
+      contacts: 4,
+      tissue: ["grey", "white", "outside", "outside"],
+    };
+    expect(normalizeAxial(old)).toEqual(old);
+  });
+});
+
 describe("defaultAxialPlacement", () => {
+  it("drops a sagittal electrode near the centre pointing up, keeping the dropdown but not the edge", () => {
+    const d = defaultAxialPlacement(VL, "L", { contacts: 15, tissue: [], lastInBrain: 12 });
+    expect(d.view).toBe("leftLateral");
+    expectPoint(d.tip, { x: 0.5, y: 0.55 });
+    expect(d.toward.y).toBeLessThan(d.tip.y);
+    expect(d.contacts).toBe(15);
+    expect(d.lastInBrain).toBe(12);
+    expect(d.edgeDist).toBeUndefined();
+  });
+
   it("puts a left electrode on the viewer's left from above, pointing outward", () => {
     const d = defaultAxialPlacement(V, "L");
     expect(d.view).toBe("superior");
@@ -174,6 +258,25 @@ describe("defaultAxialPlacement", () => {
 });
 
 describe("mirrorAxial", () => {
+  it("moves a sagittal placement to the other hemisphere's view", () => {
+    const m = mirrorAxial(
+      {
+        ...p,
+        view: "leftLateral",
+        tip: { x: 0.3, y: 0.4 },
+        toward: { x: 0.3, y: 0.2 },
+        lastInBrain: 2,
+        edgeDist: 40,
+      },
+      VL
+    );
+    expect(m.view).toBe("rightLateral");
+    expectPoint(m.tip, { x: 0.7, y: 0.4 });
+    expectPoint(m.toward, { x: 0.7, y: 0.2 });
+    expect(m.lastInBrain).toBe(2);
+    expect(m.edgeDist).toBe(40);
+  });
+
   it("reflects across the view's midline, keeping contacts and marks", () => {
     const marked: AxialPlacement = { ...p, tissue: ["white", "grey", "outside"] };
     const m = mirrorAxial(marked, V);
@@ -197,6 +300,27 @@ describe("translateAxial", () => {
   });
 });
 
+describe("viewPickerOrder", () => {
+  it("lists the axial views, then the electrode's own side, then the other", () => {
+    expect(viewPickerOrder("R")).toEqual([
+      "inferior",
+      "superior",
+      "rightLateral",
+      "rightMedial",
+      "leftLateral",
+      "leftMedial",
+    ]);
+    expect(viewPickerOrder(null)).toEqual([
+      "inferior",
+      "superior",
+      "leftLateral",
+      "leftMedial",
+      "rightLateral",
+      "rightMedial",
+    ]);
+  });
+});
+
 describe("hemisphereOf", () => {
   it("reads the leading L/R", () => {
     expect(hemisphereOf("LTMI")).toBe("L");
@@ -211,6 +335,10 @@ describe("formatTissueRanges", () => {
     expect(formatTissueRanges(["grey", "grey", "grey", "white", "white", "grey", "outside"])).toBe(
       "grey 1–3, 6 · white 4–5 · outside 7"
     );
+  });
+
+  it("lists noisy between white and outside", () => {
+    expect(formatTissueRanges(["grey", "noisy", "outside"])).toBe("grey 1 · noisy 2 · outside 3");
   });
 
   it("handles one state, one contact and none", () => {

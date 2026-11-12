@@ -15,15 +15,27 @@ export type FigureId = "legacy" | "v2";
 
 export type ElectrodeType = "lateral-medial" | "superior-inferior" | "grid";
 
-/** Tissue a depth-electrode contact sits in, as marked by the user on the Axial view. */
-export type Tissue = "grey" | "white" | "outside";
-
-/** Which axial outline an electrode is drawn on: seen from below or from above. */
-export type AxialViewId = "inferior" | "superior";
+/**
+ * State of a depth-electrode contact, as marked by the user on the Electrode view:
+ * grey or white matter, noisy (lost during recording), or outside the brain.
+ */
+export type Tissue = "grey" | "white" | "noisy" | "outside";
 
 /**
- * An electrode's shaft on the Axial view page. A schematic: contacts are spaced along
- * the shaft at full length, as if it ran level in the axial plane.
+ * Which outline an electrode is drawn on: seen from below or above, or the lateral /
+ * medial surface of one hemisphere.
+ */
+export type AxialViewId =
+  | "inferior"
+  | "superior"
+  | "leftLateral"
+  | "leftMedial"
+  | "rightLateral"
+  | "rightMedial";
+
+/**
+ * An electrode's shaft on the Electrode view page. Contacts are 3.5 mm apart unless the
+ * shaft is fitted to the outline (see `lastInBrain`).
  */
 export interface AxialPlacement {
   view: AxialViewId;
@@ -33,8 +45,16 @@ export interface AxialPlacement {
   toward: Point;
   /** Number of contacts, 1..24. */
   contacts: number;
-  /** Tissue per contact; index 0 is contact 1. Same length as `contacts`. */
+  /** State per contact; index 0 is contact 1. Same length as `contacts`. */
   tissue: Tissue[];
+  /**
+   * Last contact inside the brain (1..contacts), from the surgeon's post-implant list.
+   * Contacts after it read as outside, and the shaft is fitted so the outline falls
+   * between it and the next. Absent = all in brain.
+   */
+  lastInBrain?: number;
+  /** Hand-set distance from the tip to the brain edge, in the view's native px. */
+  edgeDist?: number;
 }
 
 export interface BaseElectrode {
@@ -49,7 +69,7 @@ export interface BaseElectrode {
   order: number;
   createdAt: string;
   updatedAt: string;
-  /** Placement on the Axial view page. Absent = not shown there. */
+  /** Placement on the Electrode view page. Absent = not shown there. */
   axial?: AxialPlacement;
 }
 
