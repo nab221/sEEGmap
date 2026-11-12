@@ -110,13 +110,15 @@ in the clinical report shows which contacts you are recording from.
   dropdown marks outside can't be clicked. **Drag** a contact or the shaft to move it, and
   drag the **◆** handle to rotate the shaft about its tip. Undo/redo work as in the
   Planner.
-- **Export PNG** saves one picture per view in use, e.g. `<label>-bottom-up.png` and
-  `<label>-left-lateral.png`. Each has the outline, the L/R markers, the electrode names,
-  and underneath, a legend for that view's electrodes (ID, name, entry, target and contact
-  ranges, e.g. `grey 1–3, 6 · white 4–5 · noisy 7 · outside 13–15`) with a key to the four
-  dot styles. `<label>-electrode-legend.png` holds the same legend for every placed
-  electrode. Editing handles are left out of the pictures. Some browsers ask once before
-  letting a site save several files.
+- **Export PDF** saves `<label>-electrode-views.pdf`, with one A4 portrait page per view
+  in use. Each page has the outline, the L/R markers, the electrode names, the patient
+  label in the top-right corner, and underneath, a legend for that view's electrodes (ID,
+  name, entry, target and contact ranges, e.g. `grey 1–3, 6 · white 4–5 · noisy 7 ·
+  outside 13–15`) with a key to the four dot styles. Editing handles are left out.
+- **Export PNG** saves the same pages as separate 300 dpi PNGs, e.g.
+  `<label>-bottom-up.png` and `<label>-left-lateral.png`, plus
+  `<label>-electrode-legend.png` with the legend for every placed electrode. Some browsers
+  ask once before letting a site save several files.
 - Placements, marks and "Last in brain" are saved with the plan (autosave and
   `.seegmap`). **Mirror to R/L** carries them to the mirrored electrode: on a lateral or
   medial view it moves to the other hemisphere's matching view.
@@ -125,12 +127,15 @@ in the clinical report shows which contacts you are recording from.
 
 - **Save .seegmap** downloads the full plan (electrodes, sketches, notes, patient label)
   as a `.seegmap` JSON file — re-import it later via **Import .seegmap** on Home.
-- **Export PNG / PDF / PPTX** render the current canvas (plus, for PDF/PPTX, an
-  electrode table and notes page/slide) for sharing or printing. None of these are
-  saved anywhere automatically — download what you need to keep.
+- **Export PNG** and **Export PDF** produce the same A4 landscape page (300 dpi, ready
+  to print at 100 %) with the patient label in the top-right corner; the PDF is that
+  page, for document stores that only take PDF. **Export PPTX** adds an electrode table
+  and notes slide. None of these are saved anywhere automatically — download what you
+  need to keep.
 - Tick **Legend** (next to the export buttons) to draw a table of electrode names,
-  entries and targets beside the figure in the PNG, and on page 1 of the PDF, so a
-  single high-resolution image carries both. The choice is remembered in this browser.
+  entries and targets beside the figure in the PNG and PDF.
+- Tick **Notes in PDF** to add the plan notes and per-electrode notes to the PDF as
+  extra pages. Both choices are remembered in this browser.
 
 ### Maintain the anatomical library
 
