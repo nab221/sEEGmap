@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef } from "react";
 import { useStore } from "../store/useStore";
 import type { AxialPlacement, AxialViewId, Electrode, Point } from "../types";
-import { AXIAL_VIEWS, axialImageUrl, type AxialViewConfig } from "../lib/axialViews";
+import { AXIAL_VIEWS, axialOutlineUrl, type AxialViewConfig } from "../lib/axialViews";
 import {
   contactPositions,
   cycleContact,
@@ -180,7 +180,7 @@ export default function AxialCanvas({
         onLostPointerCapture={cancelDrag}
         style={{ display: "block", background: "#fff", touchAction: "none" }}
       >
-        <image href={axialImageUrl(viewId)} x={0} y={0} width={view.width} height={view.height} />
+        <image href={axialOutlineUrl(viewId)} x={0} y={0} width={view.width} height={view.height} preserveAspectRatio="none" />
         <SideMarkers view={view} />
         {placed.map(({ electrode: e, placement }) => (
           <Shaft

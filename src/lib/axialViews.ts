@@ -167,7 +167,15 @@ export function viewPickerOrder(hemisphere: Hemisphere | null): AxialViewId[] {
   return AXIAL_VIEW_ORDER;
 }
 
-/** URL of a view's outline image, resolved against the app's base path. */
+/** URL of a view's outline image (PNG), resolved against the app's base path. The brain mask is built from it. */
 export function axialImageUrl(id: AxialViewId): string {
   return `${import.meta.env.BASE_URL}${AXIAL_VIEWS[id].imageFile}`;
+}
+
+/**
+ * URL of the vector trace of the same outline (scripts/assets/make_vector_outlines.mjs),
+ * drawn on the page so it stays sharp at any zoom. Same size and coordinates as the PNG.
+ */
+export function axialOutlineUrl(id: AxialViewId): string {
+  return axialImageUrl(id).replace(/\.png$/, ".svg");
 }

@@ -110,6 +110,11 @@ in the clinical report shows which contacts you are recording from.
   dropdown marks outside can't be clicked. **Drag** a contact or the shaft to move it, and
   drag the **◆** handle to rotate the shaft about its tip. Undo/redo work as in the
   Planner.
+- **Zoom.** The **Zoom** slider (or −/+) in the toolbar sets how big each view is drawn:
+  100% fills the width with one view per row, 50% puts two side by side, and up to 200%
+  for close work (scroll sideways). **Fit** picks the largest zoom that shows every view
+  in the window at once. The zoom is remembered in this browser and doesn't change the
+  export. The outlines are drawn as vectors, so they stay sharp at any zoom.
 - **Export PDF** saves `<label>-electrode-views.pdf`, with one A4 portrait page per view
   in use. Each page has the outline, the L/R markers, the electrode names, the patient
   label in the top-right corner, and underneath, a legend for that view's electrodes (ID,
@@ -254,6 +259,10 @@ These drive the app without needing a rebuild for content changes (only a redepl
   `view-right-medial.png` — the lateral and medial outlines used by the Electrode view,
   cut from `brain-template-v2.png` (with its red guide lines removed) by
   `scripts/assets/make_sagittal_views.py`.
+- Each of those six PNGs has a vector trace beside it (`axial-inferior.svg`, …), which is
+  what the Electrode view draws and exports; the brain mask is still built from the PNG.
+  After changing a PNG, regenerate the traces with
+  `node scripts/assets/make_vector_outlines.mjs`.
 - Each outline's size, midline, scale and margins are set in `src/lib/axialViews.ts`;
   update those values if you replace an image. The Electrode view works out where the
   brain is by flood-filling the white paper in from the image edge, so an outline must be

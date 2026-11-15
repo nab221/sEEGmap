@@ -9,6 +9,32 @@ import { exportBaseName } from "../lib/export/png";
 import { exportElectrodeViewPdf, exportElectrodeViewPng, type ElectrodeViewPage } from "../lib/export/electrodeViewPng";
 import { axialLegendEntries, exportAxialLegendPng } from "../lib/export/axialLegend";
 
+/** Zoom = each view's width as a percentage of the drawing area; 100% is one view per row. */
+const ZOOM_MIN = 20;
+const ZOOM_MAX = 200;
+const ZOOM_STEP = 5;
+const ZOOM_DEFAULT = 50;
+/** Space between views, and padding round them, in CSS px. */
+const VIEW_GAP = 20;
+const ZOOM_KEY = "seegmap.electrodeView.zoom";
+
+const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z / ZOOM_STEP) * ZOOM_STEP));
+
+function loadZoom(): number {
+  try {
+    const v = Number(localStorage.getItem(ZOOM_KEY));
+    return Number.isFinite(v) && v > 0 ? clampZoom(v) : ZOOM_DEFAULT;
+  } catch {
+    return ZOOM_DEFAULT;
+  }
+}
+
+/** Frame aspect (height / width) of a view as AxialCanvas draws it, margins included. */
+function frameAspect(v: AxialViewId): number {
+  const c = AXIAL_VIEWS[v];
+  return (c.height * (1 + 2 * c.margin.y)) / (c.width * (1 + 2 * c.margin.x));
+}
+
 /**
  * Electrode view: after implantation, each depth electrode's shaft on the outline that
  * shows it best, so every contact can be marked grey matter, white matter, noisy or
@@ -23,6 +49,17 @@ export default function AxialView() {
   const patientLabel = useStore((s) => s.patientLabel);
   const [showAllNumbers, setShowAllNumbers] = useState(false);
   const [busy, setBusy] = useState<"png" | "pdf" | null>(null);
+  const [zoom, setZoomState] = useState(loadZoom);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const setZoom = (z: number) => {
+    const next = clampZoom(z);
+    setZoomState(next);
+    try {
+      localStorage.setItem(ZOOM_KEY, String(next));
+    } catch {
+      // Storage blocked: the zoom just isn't remembered.
+    }
+  };
   const viewRefs = useRef<Partial<Record<AxialViewId, HTMLDivElement | null>>>({});
   const placedCount = axialLegendEntries(electrodes).length;
   const usedViews = useMemo(() => {
@@ -70,6 +107,31 @@ export default function AxialView() {
     } finally {
       setBusy(null);
     }
+  };
+
+  /** Largest zoom at which every view in use fits the visible area at once, without scrolling. */
+  const fitZoom = () => {
+    const el = scrollRef.current;
+    if (!el || usedViews.length === 0) return;
+    const areaW = el.clientWidth - 2 * VIEW_GAP;
+    // The app shell grows with its content, so the window, not this box, bounds what's visible.
+    const visibleH = Math.min(el.clientHeight, window.innerHeight - Math.max(0, el.getBoundingClientRect().top));
+    const areaH = visibleH - 2 * VIEW_GAP;
+    const aspects = usedViews.map(frameAspect);
+    // Lay the views out as the flex row below does, from 100% down, until they fit.
+    for (let z = 100; z >= ZOOM_MIN; z -= ZOOM_STEP) {
+      const cardW = (z / 100) * areaW - VIEW_GAP * (1 - z / 100);
+      const perRow = Math.max(1, Math.floor((areaW + VIEW_GAP + 0.5) / (cardW + VIEW_GAP)));
+      let total = 0;
+      for (let i = 0; i < aspects.length; i += perRow) {
+        total += Math.max(...aspects.slice(i, i + perRow)) * cardW + 2 + (i > 0 ? VIEW_GAP : 0); // 2: card border
+      }
+      if (total <= areaH) {
+        setZoom(z);
+        return;
+      }
+    }
+    setZoom(ZOOM_MIN);
   };
 
   useEffect(() => {
@@ -123,6 +185,37 @@ export default function AxialView() {
             Show all contact numbers
           </label>
           <div style={{ flex: 1 }} />
+          <div
+            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, whiteSpace: "nowrap" }}
+            title="Size of each view. 100% fills the width with one view per row."
+          >
+            <label htmlFor="ev-zoom" style={{ color: "var(--muted)" }}>Zoom</label>
+            <button className="btn btn-sm" onClick={() => setZoom(zoom - ZOOM_STEP * 2)} disabled={zoom <= ZOOM_MIN} aria-label="Zoom out">
+              −
+            </button>
+            <input
+              id="ev-zoom"
+              type="range"
+              min={ZOOM_MIN}
+              max={ZOOM_MAX}
+              step={ZOOM_STEP}
+              value={zoom}
+              onChange={(e) => setZoom(Number(e.target.value))}
+              style={{ width: 120, cursor: "pointer" }}
+            />
+            <button className="btn btn-sm" onClick={() => setZoom(zoom + ZOOM_STEP * 2)} disabled={zoom >= ZOOM_MAX} aria-label="Zoom in">
+              +
+            </button>
+            <span style={{ width: 36, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{zoom}%</span>
+            <button
+              className="btn btn-sm"
+              onClick={fitZoom}
+              disabled={usedViews.length === 0}
+              title="Zoom so every view fits in the window at once"
+            >
+              Fit
+            </button>
+          </div>
           <button
             className="btn btn-sm"
             disabled={busy !== null || placedCount === 0}
@@ -141,7 +234,7 @@ export default function AxialView() {
           </button>
         </div>
 
-        <div className="scroll" style={{ flex: 1, padding: 20, minHeight: 0 }}>
+        <div ref={scrollRef} className="scroll" style={{ flex: 1, padding: VIEW_GAP, minHeight: 0, overflowX: "auto" }}>
           {usedViews.length === 0 ? (
             <p style={{ fontSize: 13, color: "var(--muted)", textAlign: "center", marginTop: 40 }}>
               Choose a view for an electrode in the list to show it here.
@@ -149,16 +242,29 @@ export default function AxialView() {
           ) : (
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
-                gap: 20,
-                maxWidth: 1400,
-                margin: "0 auto",
+                display: "flex",
+                flexWrap: "wrap",
+                justifyContent: "center",
+                alignItems: "flex-start",
+                gap: VIEW_GAP,
+                // Above 100% the views are wider than the area: scroll sideways rather than squash.
+                width: zoom > 100 ? `${zoom}%` : undefined,
               }}
             >
               {usedViews.map((v) => (
                 // The border sits on this wrapper, outside the captured node, so it isn't exported.
-                <div key={v} style={{ border: "1px solid #cbd3da", borderRadius: 8, overflow: "hidden", background: "#fff" }}>
+                <div
+                  key={v}
+                  style={{
+                    // z% of the row, less this card's share of the gaps, so 1/n zoom fits n per row.
+                    width: zoom > 100 ? "100%" : `calc(${zoom}% - ${(VIEW_GAP * (1 - zoom / 100)).toFixed(2)}px)`,
+                    boxSizing: "border-box",
+                    border: "1px solid #cbd3da",
+                    borderRadius: 8,
+                    overflow: "hidden",
+                    background: "#fff",
+                  }}
+                >
                   <div
                     ref={(el) => {
                       viewRefs.current[v] = el;
