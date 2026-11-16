@@ -77,6 +77,11 @@ describe("axialLegendEntries", () => {
     expect(axialLegendEntries([lm("a", "LTMI", 0, a)])[0].ranges).toBe("grey 1 · white 2 · outside 3");
   });
 
+  it("gives each electrode's contact spacing, 3.5 mm by default", () => {
+    const all = [lm("a", "LTMI", 0, axial(["grey"])), lm("b", "LAH", 1, { ...axial(["grey"]), spacingMm: 5 })];
+    expect(axialLegendEntries(all).map((e) => e.spacing)).toEqual(["3.5 mm", "5 mm"]);
+  });
+
   it("is empty when nothing is placed", () => {
     expect(axialLegendEntries([lm("a", "LTMI", 0), grid])).toEqual([]);
   });

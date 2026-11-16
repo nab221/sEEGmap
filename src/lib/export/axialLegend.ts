@@ -1,10 +1,10 @@
 // Legends for the Electrode view exports: one row per placed electrode (ID, name, entry,
-// target, contact ranges per state), plus a key to the four dot styles. Drawn under each
+// target, contact spacing, contact ranges per state), plus a key to the four dot styles. Drawn under each
 // view's own PNG for that view's electrodes, and saved once more as a combined legend PNG.
 
 import type { AxialViewId, Electrode, Tissue } from "../../types";
 import { electrodeLetter } from "../nomenclature";
-import { effectiveTissue, formatTissueRanges, normalizeAxial } from "../axial";
+import { effectiveTissue, formatTissueRanges, normalizeAxial, spacingMmOf } from "../axial";
 import { TISSUE_KEY_ORDER, TISSUE_STYLE } from "../axialStyle";
 import { LegendTable, type LegendLayout } from "./legend";
 import { PRINT_U, downloadPagePng } from "./page";
@@ -13,6 +13,8 @@ export interface AxialLegendEntry {
   electrode: Electrode;
   /** Same letter as the Planner legend: position in the whole plan, grids included. */
   letter: string;
+  /** Contact spacing, e.g. "3.5 mm". */
+  spacing: string;
   ranges: string;
 }
 
@@ -25,7 +27,14 @@ export function axialLegendEntries(all: Electrode[], viewId?: AxialViewId): Axia
   return sorted.flatMap((e, i) => {
     const placement = e.type !== "grid" ? normalizeAxial(e.axial) : null;
     if (!placement || (viewId && placement.view !== viewId)) return [];
-    return [{ electrode: e, letter: electrodeLetter(i), ranges: formatTissueRanges(effectiveTissue(placement)) }];
+    return [
+      {
+        electrode: e,
+        letter: electrodeLetter(i),
+        spacing: `${spacingMmOf(placement)} mm`,
+        ranges: formatTissueRanges(effectiveTissue(placement)),
+      },
+    ];
   });
 }
 
@@ -43,8 +52,11 @@ export function buildLegendParts(entries: AxialLegendEntry[], u: number): Legend
     u,
     {
       letterFor: (e) => byId.get(e.id)!.letter,
-      // No width cap: a truncated range would hide contacts.
-      extraColumn: { header: "Contacts", cap: Infinity, cell: (e) => byId.get(e.id)!.ranges },
+      extraColumns: [
+        { header: "Spacing", cap: 70, cell: (e) => byId.get(e.id)!.spacing },
+        // No width cap: a truncated range would hide contacts.
+        { header: "Contacts", cap: Infinity, cell: (e) => byId.get(e.id)!.ranges },
+      ],
     }
   );
   const layout: LegendLayout = table.layoutForHeight(Infinity);

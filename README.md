@@ -128,13 +128,13 @@ in the clinical report shows which contacts you are recording from.
 - **Export PDF** saves `<label>-electrode-views.pdf`, with one A4 portrait page per view
   in use. Each page has the outline, the L/R markers, the electrode names, the patient
   label in the top-right corner, and underneath, a legend for that view's electrodes (ID,
-  name, entry, target and contact ranges, e.g. `grey 1–3, 6 · white 4–5 · noisy 7 ·
+  name, entry, target, contact spacing and contact ranges, e.g. `grey 1–3, 6 · white 4–5 · noisy 7 ·
   outside 13–15`) with a key to the four dot styles. Editing handles are left out.
 - **Export PNG** saves the same pages as separate 300 dpi PNGs, e.g.
   `<label>-bottom-up.png` and `<label>-left-lateral.png`, plus
   `<label>-electrode-legend.png` with the legend for every placed electrode. Some browsers
   ask once before letting a site save several files.
-- Placements, marks and "Last in brain" are saved with the plan (autosave and
+- Placements, marks, spacing and "Last in brain" are saved with the plan (autosave and
   `.seegmap`). **Mirror to R/L** carries them to the mirrored electrode: on a lateral or
   medial view it moves to the other hemisphere's matching view.
 
