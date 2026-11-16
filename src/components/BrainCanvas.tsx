@@ -24,7 +24,7 @@ type DragTarget =
   | {
       kind: "point";
       electrodeId: string;
-      field: "entry" | "target" | "lateralStart" | "lateralEnd" | "medialTarget";
+      field: "entry" | "target" | "lateralStart" | "lateralEnd" | "medialTarget" | "lateralEntry";
     }
   /** Body drag: `grab` is the pointer's offset from the array center, in REF pixels. */
   | { kind: "grid-move"; electrodeId: string; grab: PixelPoint }
@@ -533,6 +533,15 @@ function ElectrodeMarks({
           onPointerDown={(e) => onStartDrag(e, { kind: "point", electrodeId: electrode.id, field: "lateralEnd" })}
         />
       )}
+      {electrode.lateralEntry && (
+        <EntryDot
+          point={electrode.lateralEntry}
+          color={color}
+          strokeW={strokeW}
+          r={dotR}
+          onPointerDown={(e) => onStartDrag(e, { kind: "point", electrodeId: electrode.id, field: "lateralEntry" })}
+        />
+      )}
       {electrode.medialTarget && electrode.showTarget !== false && (
         <TargetX
           point={electrode.medialTarget}
@@ -545,6 +554,9 @@ function ElectrodeMarks({
       {showNames && (
         <>
           <NameLabel point={electrode.lateralStart} text={electrode.name} color={color} dy={-(dotR + 10)} />
+          {electrode.lateralEntry && (
+            <NameLabel point={electrode.lateralEntry} text={electrode.name} color={color} dy={-(dotR + 10)} />
+          )}
           {electrode.medialTarget && electrode.showTarget !== false && (
             <NameLabel point={electrode.medialTarget} text={electrode.name} color={color} dy={xR + 16} />
           )}

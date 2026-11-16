@@ -412,6 +412,7 @@ export const useStore = create<StoreState>((set, get) => ({
           lateralStart: move(electrode.lateralStart),
           lateralEnd: move(electrode.lateralEnd),
           ...(electrode.medialTarget ? { medialTarget: move(electrode.medialTarget) } : {}),
+          ...(electrode.lateralEntry ? { lateralEntry: move(electrode.lateralEntry) } : {}),
         });
       }
       return;
@@ -569,6 +570,7 @@ export const useStore = create<StoreState>((set, get) => ({
       lateralStart: partial?.lateralStart ?? { x: 0.5, y: 0.1 },
       lateralEnd: partial?.lateralEnd ?? { x: 0.5, y: 0.3 },
       ...(partial?.medialTarget ? { medialTarget: partial.medialTarget } : {}),
+      ...(partial?.lateralEntry ? { lateralEntry: partial.lateralEntry } : {}),
       entryName: partial?.entryName ?? "",
       targetName: partial?.targetName ?? "",
       notes: partial?.notes ?? "",
@@ -770,6 +772,9 @@ export const useStore = create<StoreState>((set, get) => ({
         lateralEnd: { x: 1 - source.lateralEnd.x, y: source.lateralEnd.y },
         medialTarget: source.medialTarget
           ? { x: 1 - source.medialTarget.x, y: source.medialTarget.y }
+          : undefined,
+        lateralEntry: source.lateralEntry
+          ? { x: 1 - source.lateralEntry.x, y: source.lateralEntry.y }
           : undefined,
         showTarget: source.showTarget,
         entryName: source.entryName,

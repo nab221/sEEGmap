@@ -77,6 +77,28 @@ export function lateralToMedial(point: Point, regions: BrainRegionsConfig | null
   return pixelToNormalized(mx0 + fx * (mx1 - mx0), my0 + fy * (my1 - my0), regions);
 }
 
+/**
+ * Map a point to the same relative position on its hemisphere's *lateral* view.
+ * Lateral and medial quadrants share their anterior/posterior orientation, so the
+ * point keeps its fractional position inside the quadrant's bbox. A point already on
+ * a lateral view is returned unchanged. Without a regions config, a point in the lower
+ * (medial) half is shifted half the figure up.
+ */
+export function medialToLateral(point: Point, regions: BrainRegionsConfig | null): Point {
+  if (!regions) return point.y >= 0.5 ? { x: point.x, y: clamp01(point.y - 0.5) } : point;
+  const px = point.x * regions.referenceWidth;
+  const py = point.y * regions.referenceHeight;
+  const side: "L" | "R" = px < regions.referenceWidth / 2 ? "L" : "R";
+  const [lx0, ly0, lx1, ly1] = regions.quadrants[quadrantForSide(side, "lateral")].bbox;
+  const [mx0, my0, mx1, my1] = regions.quadrants[quadrantForSide(side, "medial")].bbox;
+  // Closer to the medial quadrant's vertical span than the lateral one's -> it's on the medial view.
+  const onMedial = Math.abs(py - (my0 + my1) / 2) < Math.abs(py - (ly0 + ly1) / 2);
+  if (!onMedial) return point;
+  const fx = clamp01((px - mx0) / (mx1 - mx0));
+  const fy = clamp01((py - my0) / (my1 - my0));
+  return pixelToNormalized(lx0 + fx * (lx1 - lx0), ly0 + fy * (ly1 - ly0), regions);
+}
+
 export function quadrantForSide(
   side: "L" | "R",
   view: "lateral" | "medial"
