@@ -55,11 +55,13 @@ export interface LegendLayout {
 export interface LegendOptions {
   /** Row label for an electrode; defaults to A, B, C… by its position in `electrodes`. */
   letterFor?: (e: Electrode, index: number) => string;
-  /** An extra column after Target. `cap` is its maximum width in CSS px. */
-  extraColumn?: { header: string; cap: number; cell: (e: Electrode) => string };
+  /** Extra columns after Target, in order. `cap` is each one's maximum width in CSS px. */
+  extraColumns?: { header: string; cap: number; cell: (e: Electrode) => string }[];
 }
 
-type ColKey = "num" | "name" | "entry" | "target" | "extra";
+type BaseKey = "num" | "name" | "entry" | "target";
+/** A base column, or an extra column by its index in `extraColumns`. */
+type ColKey = BaseKey | number;
 
 /**
  * The electrode legend table: name, entry and target per electrode, drawn on a 2D
@@ -75,7 +77,7 @@ export class LegendTable {
   private readonly dotSpace: number;
   private readonly bodyFont: string;
   private readonly headFont: string;
-  private readonly rows: (Record<ColKey, string> & { color: string })[];
+  private readonly rows: (Record<BaseKey, string> & { extra: string[]; color: string })[];
   private readonly cols: { key: ColKey; header: string; w: number }[];
   readonly tableW: number;
 
@@ -92,13 +94,13 @@ export class LegendTable {
     this.headFont = `bold ${fontSize}px ${fontFamily}`;
 
     const sorted = [...electrodes].sort((a, b) => a.order - b.order);
-    const { letterFor, extraColumn } = options;
+    const { letterFor, extraColumns = [] } = options;
     this.rows = sorted.map((e, i) => ({
       num: letterFor ? letterFor(e, i) : electrodeLetter(i),
       name: e.name,
       entry: e.entryName || "--",
       target: e.targetName || "--",
-      extra: extraColumn ? extraColumn.cell(e) : "",
+      extra: extraColumns.map((c) => c.cell(e)),
       color: e.color,
     }));
 
@@ -122,13 +124,9 @@ export class LegendTable {
       { key: "entry", header: "Entry", w: colWidth("Entry", rows.map((r) => r.entry), 200 * u) },
       { key: "target", header: "Target", w: colWidth("Target", rows.map((r) => r.target), 220 * u) },
     ];
-    if (extraColumn) {
-      this.cols.push({
-        key: "extra",
-        header: extraColumn.header,
-        w: colWidth(extraColumn.header, rows.map((r) => r.extra), extraColumn.cap * u),
-      });
-    }
+    extraColumns.forEach((c, i) => {
+      this.cols.push({ key: i, header: c.header, w: colWidth(c.header, rows.map((r) => r.extra[i]), c.cap * u) });
+    });
     this.tableW = this.cols.reduce((sum, c) => sum + c.w, 0);
   }
 
@@ -202,7 +200,8 @@ export class LegendTable {
           }
           ctx.fillStyle = "#182430";
           const room = cx + c.w - cellPadX - tx;
-          ctx.fillText(fitText(ctx, r[c.key], room), tx, y + rowH / 2);
+          const text = typeof c.key === "number" ? r.extra[c.key] : r[c.key];
+          ctx.fillText(fitText(ctx, text, room), tx, y + rowH / 2);
           cx += c.w;
         });
       });

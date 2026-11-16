@@ -13,6 +13,8 @@ import {
   normalizeAxial,
   shaftFit,
   translateAxial,
+  withEntry,
+  withTarget,
 } from "../lib/axial";
 import { TISSUE_STYLE } from "../lib/axialStyle";
 import type { BrainMask } from "../lib/brainMask";
@@ -20,6 +22,12 @@ import { useBrainMask } from "../lib/useBrainMask";
 
 /** Pointer travel (CSS px) below which a press on a contact counts as a click, not a drag. */
 const DRAG_THRESHOLD = 4;
+
+/** Click-to-place in progress: the next click on the electrode's view sets its target, then its entry. */
+export interface Marking {
+  electrodeId: string;
+  step: "target" | "entry";
+}
 
 /** Class on anything drawn only for editing, left out of exported pictures (see electrodeViewPng). */
 export const EDIT_ONLY = "edit-only";
@@ -49,14 +57,20 @@ interface DragState {
 /**
  * One outline with every electrode placed on it. Click a contact to cycle its state; drag
  * a contact or the shaft to move it; drag the diamond handle to rotate the shaft about its
- * tip; drag the edge bar to set where the brain edge is.
+ * tip; drag the entry bar to set where the shaft enters the brain (the contacts in brain
+ * stretch or squeeze to fill the span). While `marking`, clicks set that electrode's
+ * target, then its entry.
  */
 export default function AxialCanvas({
   viewId,
   showAllNumbers,
+  marking = null,
+  onMarking,
 }: {
   viewId: AxialViewId;
   showAllNumbers: boolean;
+  marking?: Marking | null;
+  onMarking?: (next: Marking | null) => void;
 }) {
   const view = AXIAL_VIEWS[viewId];
   const electrodes = useStore((s) => s.electrodes);
@@ -133,10 +147,17 @@ export default function AxialCanvas({
     }
     if (d.kind === "edge") {
       d.moved = true;
-      const along = distanceAlongShaft(d.startPlacement, view, clientToNormalized(e.clientX, e.clientY));
-      updateElectrode(d.electrodeId, {
-        axial: { ...d.startPlacement, edgeDist: Math.max(0.25 * nominalSpacingPx(view), along) },
-      });
+      // Free drag: the bar is the entry point, so it sets direction and distance together.
+      const pt = clientToNormalized(e.clientX, e.clientY);
+      const next = withEntry(d.startPlacement, view, pt);
+      const minPx = 0.25 * nominalSpacingPx(view, d.startPlacement);
+      if (next.edgeDist !== undefined && next.edgeDist >= minPx) {
+        updateElectrode(d.electrodeId, { axial: next });
+      } else {
+        // Too close to the tip to point anywhere: hold the direction, clamp the distance.
+        const along = distanceAlongShaft(d.startPlacement, view, pt);
+        updateElectrode(d.electrodeId, { axial: { ...d.startPlacement, edgeDist: Math.max(minPx, along) } });
+      }
       return;
     }
     const dist = Math.hypot(e.clientX - d.start.x, e.clientY - d.start.y);
@@ -157,6 +178,27 @@ export default function AxialCanvas({
       updateElectrode(d.electrodeId, { axial: cycleContact(d.startPlacement, d.contactIndex) });
     }
     endHistoryBatch();
+  };
+
+  // The electrode being marked, when it is on this view.
+  const marked = marking ? placed.find((x) => x.electrode.id === marking.electrodeId) : undefined;
+
+  const onMarkClick = (e: React.PointerEvent) => {
+    if (e.button !== 0 || !marking || !marked) return;
+    e.stopPropagation();
+    const pt = clientToNormalized(e.clientX, e.clientY);
+    const current = normalizeAxial(marked.electrode.axial);
+    if (!current) return;
+    if (marking.step === "target") {
+      updateElectrode(marked.electrode.id, { axial: withTarget(current, pt) });
+      onMarking?.({ ...marking, step: "entry" });
+    } else {
+      const next = withEntry(current, view, pt);
+      // A click on the tip itself is ignored: there is no span to fill.
+      if (next.edgeDist === undefined || next.edgeDist < 0.25 * nominalSpacingPx(view, current)) return;
+      updateElectrode(marked.electrode.id, { axial: next });
+      onMarking?.(null);
+    }
   };
 
   /** End a drag without treating it as a click: lost capture, cancel, or a stray release. */
@@ -193,6 +235,27 @@ export default function AxialCanvas({
             onStart={startDrag}
           />
         ))}
+        {marked && (
+          // Catches every click on this view while marking, so contacts can't be cycled by mistake.
+          <rect
+            className={EDIT_ONLY}
+            x={-frame.mx}
+            y={-frame.my}
+            width={frame.w}
+            height={frame.h}
+            fill="rgba(25, 118, 210, 0.04)"
+            stroke={marked.electrode.color}
+            strokeWidth={mmOn(view)(0.8)}
+            style={{ cursor: "crosshair" }}
+            onPointerDown={onMarkClick}
+          >
+            <title>
+              {marking!.step === "target"
+                ? `Click the target (contact 1) for ${marked.electrode.name}`
+                : `Click where ${marked.electrode.name} enters the brain`}
+            </title>
+          </rect>
+        )}
       </svg>
     </div>
   );
@@ -262,8 +325,7 @@ function Shaft({
   const ny = ux;
   const font = "Helvetica, Arial, sans-serif";
   const lastIndex = contacts.length - 1;
-  const edgeN = edgeHandlePosition(placement, view, fit);
-  const edge = edgeN ? toPx(edgeN) : null;
+  const edge = toPx(edgeHandlePosition(placement, view, fit));
   const handleR = mm(1.2);
 
   return (
@@ -336,29 +398,27 @@ function Shaft({
           </g>
         );
       })}
-      {edge && (
-        <g className={EDIT_ONLY} style={{ cursor: "move" }} onPointerDown={(e) => onStart(e, electrode, "edge", null)}>
-          <title>Drag to set where the brain edge is</title>
-          {/* Wide invisible grab area, then the visible bar across the shaft. */}
-          <line
-            x1={edge.x + nx * mm(3)}
-            y1={edge.y + ny * mm(3)}
-            x2={edge.x - nx * mm(3)}
-            y2={edge.y - ny * mm(3)}
-            stroke="transparent"
-            strokeWidth={mm(2)}
-          />
-          <line
-            x1={edge.x + nx * mm(2.4)}
-            y1={edge.y + ny * mm(2.4)}
-            x2={edge.x - nx * mm(2.4)}
-            y2={edge.y - ny * mm(2.4)}
-            stroke={electrode.color}
-            strokeWidth={mm(0.5)}
-            strokeDasharray={`${mm(0.6)} ${mm(0.4)}`}
-          />
-        </g>
-      )}
+      <g className={EDIT_ONLY} style={{ cursor: "move" }} onPointerDown={(e) => onStart(e, electrode, "edge", null)}>
+        <title>Drag to set where the shaft enters the brain; the contacts in brain stretch to fill it</title>
+        {/* Wide invisible grab area, then the visible bar across the shaft. */}
+        <line
+          x1={edge.x + nx * mm(3)}
+          y1={edge.y + ny * mm(3)}
+          x2={edge.x - nx * mm(3)}
+          y2={edge.y - ny * mm(3)}
+          stroke="transparent"
+          strokeWidth={mm(2)}
+        />
+        <line
+          x1={edge.x + nx * mm(2.4)}
+          y1={edge.y + ny * mm(2.4)}
+          x2={edge.x - nx * mm(2.4)}
+          y2={edge.y - ny * mm(2.4)}
+          stroke={electrode.color}
+          strokeWidth={mm(0.5)}
+          strokeDasharray={`${mm(0.6)} ${mm(0.4)}`}
+        />
+      </g>
       <path
         className={EDIT_ONLY}
         d={`M${handle.x},${handle.y - handleR}L${handle.x + handleR},${handle.y}L${handle.x},${handle.y + handleR}L${handle.x - handleR},${handle.y}Z`}

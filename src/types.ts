@@ -34,8 +34,9 @@ export type AxialViewId =
   | "rightMedial";
 
 /**
- * An electrode's shaft on the Electrode view page. Contacts are 3.5 mm apart unless the
- * shaft is fitted to the outline (see `lastInBrain`).
+ * An electrode's shaft on the Electrode view page. Contacts are `spacingMm` apart (3.5 mm
+ * when absent) unless the shaft is fitted to the outline (see `lastInBrain`) or to a
+ * hand-set entry (see `edgeDist`).
  */
 export interface AxialPlacement {
   view: AxialViewId;
@@ -53,8 +54,13 @@ export interface AxialPlacement {
    * between it and the next. Absent = all in brain.
    */
   lastInBrain?: number;
-  /** Hand-set distance from the tip to the brain edge, in the view's native px. */
+  /**
+   * Hand-set distance from the tip to the brain entry, in the view's native px. The
+   * contacts in brain are spread to fill it exactly (stretched or squeezed).
+   */
   edgeDist?: number;
+  /** Centre-to-centre contact spacing in mm, e.g. 3.5 (DIXI) or 5 (Ad-Tech). Absent = 3.5. */
+  spacingMm?: number;
 }
 
 export interface BaseElectrode {

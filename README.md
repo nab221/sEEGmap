@@ -91,20 +91,30 @@ in the clinical report shows which contacts you are recording from.
   hemisphere's lateral view.
 - **Contacts.** Set the number of contacts with the −/+ buttons or by typing a number.
   Contact 1 is the tip (the deepest).
+- **Spacing.** Pick the electrode's centre-to-centre contact spacing: **3.5 mm** (DIXI,
+  the default), **5 mm** or **10 mm** (Ad-Tech), or 4–8 mm. It sets the true scale the
+  shaft is drawn at and checked against.
+- **Mark target → entry.** Click this in the row, then click the **target** (contact 1)
+  on the outline, then where the electrode **enters the brain**. The contacts in brain
+  are spread to fill the span exactly, stretched or squeezed, so a mesial target reaches
+  the cortex. Esc cancels.
 - **Last in brain.** Pick the last contact inside the brain from the surgeon's
   post-implant list (e.g. "R Amy – 12"). Every contact after it is marked **outside**
   automatically.
 - **Fitting.** Once "Last in brain" is set, the shaft is fitted to the outline: contact 1
   stays at the tip, and the brain edge falls between the last contact in brain and the
-  next. Contacts further out are drawn at the true **3.5 mm** spacing. If every contact is
-  in brain, the 3.5 mm spacing is only ever shrunk, and only when the last contact would
-  otherwise land outside the outline.
-- **Scale check.** The row shows how far the fitted spacing is from 3.5 mm. Past ±25% it
-  warns you, because the electrode is probably too tilted for that view, or its tip is in
-  the wrong place. Try another view or move the tip.
-- **Adjusting the edge.** If the outline misleads the fit, drag the dashed **edge bar**
-  across the shaft to set the brain edge by hand. **Reset edge** in the row goes back to
-  the edge found from the outline.
+  next. Contacts further out are drawn at the electrode's true spacing. If every contact
+  is in brain and no entry is set by hand, the spacing is only ever shrunk, and only when
+  the last contact would otherwise land outside the outline.
+- **Scale check.** The row shows how far the fitted spacing is from the electrode's true
+  spacing. Past ±25% it warns you: the electrode may be too tilted for that view, its tip
+  or entry may be in the wrong place, or the spacing may be wrong (a 5 mm Ad-Tech
+  electrode drawn as 3.5 mm reads about 140%). Try another view, move the tip, or check
+  the spacing.
+- **Adjusting the entry.** Drag the dashed **entry bar** on the shaft to where it enters
+  the brain. It moves freely, so it turns the shaft about its tip too, and the contacts in
+  brain stretch or squeeze to fill the span. **Reset entry** in the row goes back to the
+  edge found from the outline.
 - **Marking contacts.** **Click** a contact inside the brain to cycle **grey matter → white
   matter → noisy / lost** (⊘, for a contact lost to noise during recording). Contacts the
   dropdown marks outside can't be clicked. **Drag** a contact or the shaft to move it, and
@@ -118,13 +128,13 @@ in the clinical report shows which contacts you are recording from.
 - **Export PDF** saves `<label>-electrode-views.pdf`, with one A4 portrait page per view
   in use. Each page has the outline, the L/R markers, the electrode names, the patient
   label in the top-right corner, and underneath, a legend for that view's electrodes (ID,
-  name, entry, target and contact ranges, e.g. `grey 1–3, 6 · white 4–5 · noisy 7 ·
+  name, entry, target, contact spacing and contact ranges, e.g. `grey 1–3, 6 · white 4–5 · noisy 7 ·
   outside 13–15`) with a key to the four dot styles. Editing handles are left out.
 - **Export PNG** saves the same pages as separate 300 dpi PNGs, e.g.
   `<label>-bottom-up.png` and `<label>-left-lateral.png`, plus
   `<label>-electrode-legend.png` with the legend for every placed electrode. Some browsers
   ask once before letting a site save several files.
-- Placements, marks and "Last in brain" are saved with the plan (autosave and
+- Placements, marks, spacing and "Last in brain" are saved with the plan (autosave and
   `.seegmap`). **Mirror to R/L** carries them to the mirrored electrode: on a lateral or
   medial view it moves to the other hemisphere's matching view.
 

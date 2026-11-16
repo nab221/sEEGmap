@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../store/useStore";
-import AxialCanvas from "../components/AxialCanvas";
+import AxialCanvas, { type Marking } from "../components/AxialCanvas";
 import AxialElectrodeList from "../components/AxialElectrodeList";
 import { AXIAL_VIEWS, AXIAL_VIEW_ORDER } from "../lib/axialViews";
 import { normalizeAxial } from "../lib/axial";
@@ -50,6 +50,22 @@ export default function AxialView() {
   const [showAllNumbers, setShowAllNumbers] = useState(false);
   const [busy, setBusy] = useState<"png" | "pdf" | null>(null);
   const [zoom, setZoomState] = useState(loadZoom);
+  const [marking, setMarking] = useState<Marking | null>(null);
+  const markingName = marking ? electrodes.find((e) => e.id === marking.electrodeId)?.name : undefined;
+  // Stop marking if its electrode is deleted or taken off every view.
+  useEffect(() => {
+    if (!marking) return;
+    const e = electrodes.find((x) => x.id === marking.electrodeId);
+    if (!e || e.type === "grid" || !normalizeAxial(e.axial)) setMarking(null);
+  }, [electrodes, marking]);
+  useEffect(() => {
+    if (!marking) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMarking(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [marking]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const setZoom = (z: number) => {
     const next = clampZoom(z);
@@ -167,10 +183,19 @@ export default function AxialView() {
             flexWrap: "wrap",
           }}
         >
-          <span style={{ fontSize: 13, color: "var(--muted)" }}>
-            Click a contact: grey → white → noisy. Set "Last in brain" in the list. Drag to move, ◆ to rotate, the
-            edge bar to adjust the brain edge.
-          </span>
+          {marking ? (
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--accent, #1976d2)" }}>
+              {marking.step === "target"
+                ? `Click the target (contact 1) for ${markingName ?? "the electrode"}.`
+                : `Now click where ${markingName ?? "it"} enters the brain.`}{" "}
+              Esc to cancel.
+            </span>
+          ) : (
+            <span style={{ fontSize: 13, color: "var(--muted)" }}>
+              Click a contact: grey → white → noisy. Set "Last in brain" in the list. Drag to move, ◆ to rotate, the
+              dashed entry bar to set where the shaft enters the brain (the contacts stretch to fill it).
+            </span>
+          )}
           <div style={{ display: "flex", gap: 5 }} title="Undo / redo (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z)">
             <button className="btn btn-sm" disabled={undoCount === 0} onClick={undo}>↶ Undo</button>
             <button className="btn btn-sm" disabled={redoCount === 0} onClick={redo}>↷ Redo</button>
@@ -272,7 +297,7 @@ export default function AxialView() {
                     data-view={v}
                     style={{ background: "#fff" }}
                   >
-                    <AxialCanvas viewId={v} showAllNumbers={showAllNumbers} />
+                    <AxialCanvas viewId={v} showAllNumbers={showAllNumbers} marking={marking} onMarking={setMarking} />
                   </div>
                 </div>
               ))}
@@ -281,7 +306,7 @@ export default function AxialView() {
         </div>
       </div>
       <div style={{ width: 380, flexShrink: 0, borderLeft: "1px solid var(--line)", background: "var(--surface)" }}>
-        <AxialElectrodeList />
+        <AxialElectrodeList marking={marking} onMarking={setMarking} />
       </div>
     </div>
   );
