@@ -10,6 +10,7 @@ import type {
   FreehandSketch,
   GridElectrode,
   LateralMedialElectrode,
+  MdtNote,
   Point,
   SIRegionsConfig,
   SeegPlanFile,
@@ -17,6 +18,7 @@ import type {
   TextAnnotation,
 } from "../types";
 import { CURRENT_FORMAT_VERSION } from "../types";
+import { EMPTY_MDT } from "../lib/mdtNote";
 import {
   buildLateralMedialName,
   isNameTaken,
@@ -200,6 +202,7 @@ interface StoreState {
   texts: TextAnnotation[];
   patientLabel: string;
   planNotes: string;
+  mdt: MdtNote;
   selectedId: string | null;
   hoveredId: string | null;
   searchQuery: string;
@@ -278,6 +281,7 @@ interface StoreState {
   exportPlanFile: () => SeegPlanFile;
   setPatientLabel: (v: string) => void;
   setPlanNotes: (v: string) => void;
+  setMdt: (patch: Partial<MdtNote>) => void;
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -304,6 +308,7 @@ function scheduleAutosave(get: () => StoreState) {
         key: "current",
         patientLabel: s.patientLabel,
         planNotes: s.planNotes,
+        mdt: s.mdt,
         figure: s.figure,
         updatedAt: nowISO(),
       });
@@ -322,6 +327,7 @@ export const useStore = create<StoreState>((set, get) => ({
   texts: [],
   patientLabel: "",
   planNotes: "",
+  mdt: EMPTY_MDT,
   selectedId: null,
   hoveredId: null,
   searchQuery: "",
@@ -530,6 +536,7 @@ export const useStore = create<StoreState>((set, get) => ({
       texts,
       patientLabel: session?.patientLabel ?? "",
       planNotes: session?.planNotes ?? "",
+      mdt: { ...EMPTY_MDT, ...session?.mdt },
       hydrated: true,
       figure,
       ...withActive(get().libraries, figure),
@@ -1067,6 +1074,7 @@ export const useStore = create<StoreState>((set, get) => ({
       texts: [],
       patientLabel: "",
       planNotes: "",
+      mdt: EMPTY_MDT,
       selectedId: null,
       selectedSketchId: null,
       selectedTextId: null,
@@ -1087,6 +1095,7 @@ export const useStore = create<StoreState>((set, get) => ({
       texts: file.texts ?? [],
       patientLabel: file.patientLabel ?? "",
       planNotes: file.planNotes ?? "",
+      mdt: { ...EMPTY_MDT, ...file.mdt },
       selectedId: null,
       selectedSketchId: null,
       selectedTextId: null,
@@ -1105,6 +1114,7 @@ export const useStore = create<StoreState>((set, get) => ({
       updatedAt: nowISO(),
       patientLabel: s.patientLabel,
       planNotes: s.planNotes,
+      mdt: s.mdt,
       electrodes: s.electrodes,
       sketches: s.sketches,
       texts: s.texts,
@@ -1119,6 +1129,10 @@ export const useStore = create<StoreState>((set, get) => ({
   },
   setPlanNotes: (v) => {
     set({ planNotes: v });
+    scheduleAutosave(get);
+  },
+  setMdt: (patch) => {
+    set((s) => ({ mdt: { ...s.mdt, ...patch } }));
     scheduleAutosave(get);
   },
 }));

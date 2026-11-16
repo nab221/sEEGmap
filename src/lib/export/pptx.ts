@@ -6,7 +6,8 @@ import { stripHash } from "../color";
 import { electrodeLetter } from "../nomenclature";
 import { centroid } from "../geometry";
 import { contactRadiusPx, gridContacts, gridCorners, gridSizePx, localToPixels } from "../grid";
-import type { Electrode, FigureId, FreehandSketch, GridElectrode, Point, TextAnnotation } from "../../types";
+import type { Electrode, FigureId, FreehandSketch, GridElectrode, MdtNote, Point, TextAnnotation } from "../../types";
+import { mdtPlainText } from "../mdtNote";
 
 interface PptxOptions {
   /** Which brain figure the plan is drawn on -- picks the background image and canvas aspect. */
@@ -16,6 +17,7 @@ interface PptxOptions {
   texts: TextAnnotation[];
   patientLabel: string;
   planNotes: string;
+  mdt: MdtNote;
   institution?: string;
   showNames: boolean;
   filename: string;
@@ -75,6 +77,7 @@ export async function exportWorkspacePptx({
   texts,
   patientLabel,
   planNotes,
+  mdt,
   institution,
   showNames,
   filename,
@@ -436,14 +439,13 @@ export async function exportWorkspacePptx({
   );
 
   // Slide 5: notes
-  const notesSlide = addTitleSlide("Notes");
+  const notesSlide = addTitleSlide("MDT Note");
   const withNotes = sorted.filter((e) => e.notes.trim());
   const sketchLines = sketches.length
     ? ["", "Sketched areas:", ...sketches.map((sk) => `${sk.label}`)]
     : [];
   const bodyLines = [
-    "Plan notes:",
-    planNotes || "(none)",
+    ...mdtPlainText(mdt, planNotes),
     "",
     ...(withNotes.length ? ["Per-electrode notes:"] : []),
     ...withNotes.map((e) => `${e.name}: ${e.notes}`),
@@ -458,6 +460,8 @@ export async function exportWorkspacePptx({
     fontFace: "Arial",
     valign: "top",
     color: "182430",
+    // A pasted MDT discussion can be long: let PowerPoint shrink the text to fit the box.
+    fit: "shrink",
   });
 
   await pptx.writeFile({ fileName: filename.endsWith(".pptx") ? filename : `${filename}.pptx` });

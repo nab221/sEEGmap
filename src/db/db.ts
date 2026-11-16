@@ -1,10 +1,12 @@
 import Dexie, { type Table } from "dexie";
-import type { AnatomyRecord, Electrode, FigureId, FreehandSketch, TextAnnotation } from "../types";
+import type { AnatomyRecord, Electrode, FigureId, FreehandSketch, MdtNote, TextAnnotation } from "../types";
 
 export interface SessionMeta {
   key: string; // fixed key "current"
   patientLabel: string;
   planNotes: string;
+  /** MDT meeting details. Missing on sessions saved before the MDT note existed. */
+  mdt?: MdtNote;
   /** Figure the plan is drawn on. Missing on sessions saved before figures existed = "legacy". */
   figure?: FigureId;
   updatedAt: string;
