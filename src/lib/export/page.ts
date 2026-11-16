@@ -129,12 +129,16 @@ export function newPdf(orientation: Orientation): jsPDF {
 
 /**
  * Add each page canvas to `doc` as a full A4 page, the first onto the document's
- * existing blank first page. The image fills the page edge to edge; its own margins
- * are already drawn in.
+ * existing blank first page unless `onNewPage` is set (when earlier pages already have
+ * content). The image fills the page edge to edge; its own margins are already drawn in.
  */
-export function addPageImages(doc: jsPDF, pages: { canvas: HTMLCanvasElement; orientation: Orientation }[]) {
+export function addPageImages(
+  doc: jsPDF,
+  pages: { canvas: HTMLCanvasElement; orientation: Orientation }[],
+  { onNewPage = false }: { onNewPage?: boolean } = {}
+) {
   pages.forEach(({ canvas, orientation }, i) => {
-    if (i > 0) doc.addPage("a4", orientation);
+    if (i > 0 || onNewPage) doc.addPage("a4", orientation);
     const w = doc.internal.pageSize.getWidth();
     const h = doc.internal.pageSize.getHeight();
     doc.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, w, h, undefined, "FAST");

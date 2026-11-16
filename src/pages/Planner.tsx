@@ -9,12 +9,14 @@ import { saveSeegmapFile } from "../lib/export/seegmap";
 import { REF_W } from "../lib/constants";
 import { FIGURES } from "../lib/figures";
 import FigureSegmented from "../components/FigureSegmented";
+import MdtNotePanel from "../components/MdtNotePanel";
+import { isMdtEmpty } from "../lib/mdtNote";
 import { useCanvasHeight } from "../lib/useFigure";
 import type { FigureId } from "../types";
 
 /** localStorage key for the "Legend" export tick box (a per-browser convenience). */
 const LEGEND_PREF_KEY = "seegmap.exportLegend";
-/** localStorage key for the "Notes" export tick box. */
+/** localStorage key for the "MDT note in PDF" export tick box. */
 const NOTES_PREF_KEY = "seegmap.exportNotes";
 
 /** A tick box remembered in this browser. Storage can be unavailable (private window etc.): the choice then lasts for this page only. */
@@ -44,7 +46,7 @@ export default function Planner() {
   const patientLabel = useStore((s) => s.patientLabel);
   const planNotes = useStore((s) => s.planNotes);
   const setPatientLabel = useStore((s) => s.setPatientLabel);
-  const setPlanNotes = useStore((s) => s.setPlanNotes);
+  const mdt = useStore((s) => s.mdt);
   const exportPlanFile = useStore((s) => s.exportPlanFile);
   const showNames = useStore((s) => s.showNames);
   const toggleShowNames = useStore((s) => s.toggleShowNames);
@@ -174,6 +176,7 @@ export default function Planner() {
           electrodes,
           patientLabel,
           planNotes,
+          mdt,
           filename: baseFilename(),
           includeLegend,
           includeNotes,
@@ -186,6 +189,7 @@ export default function Planner() {
           texts,
           patientLabel,
           planNotes,
+          mdt,
           showNames,
           filename: baseFilename(),
         });
@@ -229,9 +233,15 @@ export default function Planner() {
               width: 240,
             }}
           />
-          <button className="btn btn-sm" onClick={() => setNotesOpen((v) => !v)}>
-            Plan Notes
-          </button>
+          <ToggleButton active={notesOpen} onClick={() => setNotesOpen((v) => !v)}>
+            <span title="Notes from the MDT where this plan was discussed">MDT Note</span>
+            {!isMdtEmpty(mdt, planNotes) && (
+              <span
+                aria-label="has content"
+                style={{ width: 6, height: 6, borderRadius: 3, background: notesOpen ? "var(--accent-ink)" : "var(--accent)" }}
+              />
+            )}
+          </ToggleButton>
           <ToggleButton active={showNames} onClick={toggleShowNames}>
             Show Names
           </ToggleButton>
@@ -319,7 +329,7 @@ export default function Planner() {
             Legend
           </label>
           <label
-            title="Add the plan notes and per-electrode notes to the PDF as extra pages"
+            title="Start the PDF with the MDT note page (meeting, previous investigations, discussion, outcome and electrode notes); the schematic follows on its own page"
             style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
           >
             <input
@@ -328,7 +338,7 @@ export default function Planner() {
               onChange={(e) => setIncludeNotes(e.target.checked)}
               style={{ width: 14, height: 14, cursor: "pointer" }}
             />
-            Notes in PDF
+            MDT note in PDF
           </label>
           <button className="btn btn-sm" disabled={busy !== null} onClick={() => runExport("png")}>
             {busy === "png" ? "Exporting…" : "Export PNG"}
@@ -341,25 +351,7 @@ export default function Planner() {
           </button>
         </div>
 
-        {notesOpen && (
-          <div style={{ padding: "10px 20px", borderBottom: "1px solid var(--line)", background: "var(--surface-2)" }}>
-            <textarea
-              value={planNotes}
-              onChange={(e) => setPlanNotes(e.target.value)}
-              placeholder="Plan-level notes (included on the Notes export page/slide)"
-              rows={3}
-              style={{
-                width: "100%",
-                maxWidth: 900,
-                border: "1px solid var(--line-strong)",
-                borderRadius: 8,
-                padding: 10,
-                fontSize: 13,
-                resize: "vertical",
-              }}
-            />
-          </div>
-        )}
+        {notesOpen && <MdtNotePanel onClose={() => setNotesOpen(false)} />}
 
         <div className="scroll" style={{ flex: 1, padding: 20, minHeight: 0 }}>
           <div ref={canvasWrapRef} style={{ background: "#fff", display: "inline-block", width: "100%" }}>

@@ -205,13 +205,30 @@ export interface SIAnchor {
 
 export type SIRegionsConfig = Record<string, SIAnchor>;
 
+/** The MDT meeting where the plan was discussed. The discussion text itself is `planNotes`. */
+export interface MdtNote {
+  /** Meeting name, e.g. "Epilepsy Surgery MDT". Empty = the default name. */
+  meeting: string;
+  /** ISO date (YYYY-MM-DD) of the meeting, or "". */
+  date: string;
+  /** Who was present, as typed. */
+  attendees: string;
+  /** Previous investigations (video-EEG, MRI, PET, neuropsychology…), printed before the discussion. */
+  investigations: string;
+  /** The agreed outcome / decision. */
+  outcome: string;
+}
+
 export interface SeegPlanFile {
   formatVersion: string;
   appVersion: string;
   createdAt: string;
   updatedAt: string;
   patientLabel: string;
+  /** MDT discussion text (shown as "Discussion" on the MDT note). */
   planNotes: string;
+  /** Optional: absent in files written before the MDT note existed. */
+  mdt?: MdtNote;
   electrodes: Electrode[];
   sketches: FreehandSketch[];
   /** Optional: absent in files written before text annotations existed. */

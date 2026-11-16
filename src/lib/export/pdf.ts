@@ -1,123 +1,342 @@
 import type { jsPDF } from "jspdf";
 import { renderPlannerPage } from "./png";
-import { addPageImages, newPdf, savePdf, type Orientation } from "./page";
-import type { Electrode } from "../../types";
+import { addPageImages, newPdf, savePdf } from "./page";
+import { DEFAULT_MEETING, formatMdtDate, isMdtEmpty, parseNoteText, pdfSafe, type NoteBlock } from "../mdtNote";
+import type { Electrode, MdtNote } from "../../types";
 
 interface PdfOptions {
   node: HTMLElement;
   electrodes: Electrode[];
   patientLabel: string;
+  /** The MDT discussion text. */
   planNotes: string;
+  mdt: MdtNote;
   filename: string;
   /** Draw the electrode legend beside the figure, exactly as in the PNG. */
   includeLegend?: boolean;
-  /** Add the plan notes and per-electrode notes as pages after the figure. */
+  /** Start the PDF with the MDT note page(s), before the figure. */
   includeNotes?: boolean;
 }
 
 /**
- * Export the Planner as a PDF. Page 1 is the same A4 landscape page the PNG export
- * saves; with `includeNotes`, the notes follow on further pages.
+ * Export the Planner as a PDF. With `includeNotes`, the MDT note comes first on A4
+ * portrait page(s) of selectable text; the figure follows on its own A4 landscape page,
+ * the same page the PNG export saves.
  */
 export async function exportWorkspacePdf({
   node,
   electrodes,
   patientLabel,
   planNotes,
+  mdt,
   filename,
   includeLegend = false,
   includeNotes = false,
 }: PdfOptions) {
   const page = await renderPlannerPage(node, patientLabel, includeLegend ? electrodes : undefined);
-  const doc = newPdf("landscape");
-  addPageImages(doc, [{ canvas: page, orientation: "landscape" }]);
-  if (includeNotes) addNotesPages(doc, "landscape", patientLabel, planNotes, electrodes);
+  const withNote = includeNotes && hasNoteContent(mdt, planNotes, electrodes);
+  const doc = newPdf(withNote ? "portrait" : "landscape");
+  if (withNote) {
+    writeMdtNote(doc, { patientLabel, mdt, discussion: planNotes, electrodes });
+    addPageImages(doc, [{ canvas: page, orientation: "landscape" }], { onNewPage: true });
+    addPageNumbers(doc, doc.getNumberOfPages() - 1);
+  } else {
+    addPageImages(doc, [{ canvas: page, orientation: "landscape" }]);
+  }
   savePdf(doc, filename);
 }
 
-/** Page margin in mm, matching the image pages. */
-const M = 10;
-const LINE = 5;
+/** Whether there is anything to put on an MDT note page. */
+export function hasNoteContent(mdt: MdtNote, discussion: string, electrodes: Electrode[]): boolean {
+  return !isMdtEmpty(mdt, discussion) || electrodes.some((e) => e.notes.trim());
+}
+
+// ---- Layout (millimetres) ----
+
+/** Patient label sits where it does on the image pages. */
+const LABEL_M = 10;
+/** Text margins: wider than the image pages', for a comfortable reading measure. */
+const SIDE = 20;
+const TOP = 22;
+const BOTTOM = 20;
+const BODY_PT = 10;
+/** Line pitch for 10 pt text. */
+const LINE = 4.9;
+const PARA_GAP = 2.4;
+
+const INK: RGB = [24, 36, 48];
+const MUTED: RGB = [96, 108, 120];
+const ACCENT: RGB = [31, 95, 139];
+const TINT: RGB = [236, 243, 249];
+const RULE: RGB = [208, 216, 224];
+
+type RGB = [number, number, number];
+
+/** One laid-out line (or spacer) of the note: its height and how to draw it at (x, y-top). */
+interface Line {
+  h: number;
+  draw?: (x: number, y: number) => void;
+  /** Don't let a page break separate this line from the next (headings). */
+  keepWithNext?: boolean;
+}
+
+interface NoteContent {
+  patientLabel: string;
+  mdt: MdtNote;
+  discussion: string;
+  electrodes: Electrode[];
+}
 
 /**
- * Plan notes, then each electrode's notes, as text pages with the patient label in the
- * top-right corner like the image pages.
+ * Write the MDT note onto `doc`, starting on its current (first, portrait) page and adding
+ * portrait pages as needed: meeting name and date, who was present, previous
+ * investigations, the discussion text,
+ * the outcome in a shaded box, and the per-electrode notes.
  */
-export function addNotesPages(
-  doc: jsPDF,
-  orientation: Orientation,
-  patientLabel: string,
-  planNotes: string,
-  electrodes: Electrode[]
-) {
-  doc.addPage("a4", orientation);
+export function writeMdtNote(doc: jsPDF, { patientLabel, mdt, discussion, electrodes }: NoteContent) {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const bottom = pageH - M;
-  let y = 0;
+  const width = pageW - SIDE * 2;
+  const bottom = pageH - BOTTOM;
+  const flow = { y: TOP };
 
-  const startPage = () => {
+  const newPage = () => {
+    doc.addPage("a4", "portrait");
     drawPatientLabel(doc, patientLabel, pageW);
-    y = M + 10;
+    flow.y = TOP;
   };
-  const ensureRoom = (h: number) => {
-    if (y + h > bottom) {
-      doc.addPage("a4", orientation);
-      startPage();
-    }
-  };
-  startPage();
+  drawPatientLabel(doc, patientLabel, pageW);
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text("Notes", M, y);
-  y += 10;
-
-  doc.setFontSize(11);
-  doc.text("Plan notes", M, y);
-  y += 6;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  const planLines: string[] = doc.splitTextToSize(planNotes.trim() || "(none)", pageW - M * 2);
-  planLines.forEach((line) => {
-    ensureRoom(LINE);
-    doc.text(line, M, y);
-    y += LINE;
-  });
-  y += 6;
-
-  const withNotes = [...electrodes].sort((a, b) => a.order - b.order).filter((e) => e.notes.trim());
-  if (withNotes.length === 0) return;
-
-  ensureRoom(12);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.text("Per-electrode notes", M, y);
-  y += 6;
-  doc.setFontSize(10);
-  const nameW = 28;
-  withNotes.forEach((e) => {
-    const lines: string[] = doc.splitTextToSize(e.notes.trim(), pageW - M * 2 - nameW);
+  /** Draw lines from the current position, breaking pages as needed. */
+  const place = (lines: Line[]) => {
     lines.forEach((line, i) => {
-      ensureRoom(LINE);
-      if (i === 0 || y === M + 10) {
-        doc.setFont("helvetica", "bold");
-        doc.text(e.name, M, y, { maxWidth: nameW - 2 });
+      const next = lines[i + 1];
+      const need = line.h + (line.keepWithNext && next ? next.h : 0);
+      if (flow.y + need > bottom && flow.y > TOP) {
+        newPage();
+        if (!line.draw) return; // no spacer at the top of a page
       }
-      doc.setFont("helvetica", "normal");
-      doc.text(line, M + nameW, y);
-      y += LINE;
+      line.draw?.(SIDE, flow.y);
+      flow.y += line.h;
     });
-    y += 2;
+  };
+
+  // Title block
+  const title = pdfSafe(mdt.meeting.trim() || DEFAULT_MEETING);
+  const date = formatMdtDate(mdt.date);
+  setFont(doc, "bold", 16, INK);
+  const titleLines: string[] = doc.splitTextToSize(title, width);
+  place(titleLines.map((t) => ({ h: 7, draw: (x, y) => text(doc, t, x, y, "bold", 16, INK) })));
+  if (date) place([{ h: 6, draw: (x, y) => text(doc, pdfSafe(date), x, y + 0.6, "normal", 11, MUTED) }]);
+  place([{ h: 3 }, { h: 5, draw: (x, y) => rule(doc, x, y, width, ACCENT, 0.6) }]);
+
+  if (mdt.attendees.trim()) {
+    place(labelledLines(doc, "Present", pdfSafe(mdt.attendees.trim().replace(/\s*\n\s*/g, ", ")), width));
+    place([{ h: 3 }]);
+  }
+
+  // Previous investigations, then the discussion
+  const sections: [string, string][] = [
+    ["Previous investigations", mdt.investigations],
+    ["Discussion", discussion],
+  ];
+  for (const [heading, body] of sections) {
+    const blocks = parseNoteText(pdfSafe(body));
+    if (!blocks.length) continue;
+    place(sectionHeading(doc, heading, width));
+    place(blockLines(doc, blocks, width));
+    place([{ h: 5 }]);
+  }
+
+  // Outcome, in a shaded box with an accent bar; split across pages if it must be.
+  const outcome = parseNoteText(pdfSafe(mdt.outcome));
+  if (outcome.length) {
+    const padX = 4;
+    const padY = 3.2;
+    const inner = width - padX * 2 - 1.5;
+    const lines: Line[] = [
+      { h: 6.5, draw: (x, y) => text(doc, "OUTCOME / DECISION", x, y, "bold", 9, ACCENT, 0.4) },
+      ...blockLines(doc, outcome, inner),
+    ];
+    let i = 0;
+    while (i < lines.length) {
+      // Keep the box heading with at least two lines of text.
+      const minNeed = padY * 2 + lines.slice(i, i + 3).reduce((h, l) => h + l.h, 0);
+      if (flow.y + minNeed > bottom && flow.y > TOP) newPage();
+      let j = i;
+      let h = padY * 2;
+      while (j < lines.length && flow.y + h + lines[j].h <= bottom) h += lines[j++].h;
+      if (j === i) h += lines[j++].h; // a single line taller than a page: draw it anyway
+      const top = flow.y;
+      doc.setFillColor(...TINT);
+      doc.rect(SIDE, top, width, h, "F");
+      doc.setFillColor(...ACCENT);
+      doc.rect(SIDE, top, 1.5, h, "F");
+      let y = top + padY;
+      for (const line of lines.slice(i, j)) {
+        line.draw?.(SIDE + 1.5 + padX, y);
+        y += line.h;
+      }
+      flow.y = top + h;
+      i = j;
+      if (i < lines.length) newPage();
+    }
+    place([{ h: 6 }]);
+  }
+
+  // Per-electrode notes, as a two-column table.
+  const withNotes = [...electrodes].sort((a, b) => a.order - b.order).filter((e) => e.notes.trim());
+  if (withNotes.length) {
+    place(sectionHeading(doc, "Electrode notes", width));
+    const nameW = 30;
+    withNotes.forEach((e, idx) => {
+      setFont(doc, "normal", BODY_PT, INK);
+      const noteLines: string[] = doc.splitTextToSize(pdfSafe(e.notes.trim()), width - nameW);
+      const rows: Line[] = noteLines.map((t, k) => ({
+        h: LINE,
+        draw: (x, y) => {
+          if (k === 0) text(doc, pdfSafe(e.name), x, y, "bold", BODY_PT, INK);
+          text(doc, t, x + nameW, y, "normal", BODY_PT, INK);
+        },
+      }));
+      if (idx < withNotes.length - 1) rows.push({ h: 2.6, draw: (x, y) => rule(doc, x, y + 0.9, width, RULE, 0.2) });
+      place(rows);
+    });
+  }
+}
+
+/** Number the first `count` pages "Page n of N", N counting every page of the PDF. */
+function addPageNumbers(doc: jsPDF, count: number) {
+  const total = doc.getNumberOfPages();
+  for (let n = 1; n <= count; n++) {
+    doc.setPage(n);
+    const w = doc.internal.pageSize.getWidth();
+    const h = doc.internal.pageSize.getHeight();
+    text(doc, `Page ${n} of ${total}`, w - SIDE, h - 12, "normal", 8, MUTED, 0, "right");
+  }
+}
+
+function sectionHeading(doc: jsPDF, label: string, width: number): Line[] {
+  return [
+    {
+      h: 7,
+      keepWithNext: true,
+      draw: (x, y) => {
+        text(doc, label.toUpperCase(), x, y, "bold", 9, ACCENT, 0.4);
+        rule(doc, x, y + 4.6, width, RULE, 0.25);
+      },
+    },
+  ];
+}
+
+/** "Label: text" with the label in bold and the text wrapping under it at full width. */
+function labelledLines(doc: jsPDF, label: string, body: string, width: number, indent = 0): Line[] {
+  setFont(doc, "bold", BODY_PT, INK);
+  const head = `${label}: `;
+  const headW = doc.getTextWidth(head);
+  setFont(doc, "normal", BODY_PT, INK);
+  const words = body.split(/\s+/).filter(Boolean);
+  let first = "";
+  let k = 0;
+  while (k < words.length) {
+    const candidate = first ? `${first} ${words[k]}` : words[k];
+    if (doc.getTextWidth(candidate) > width - indent - headW && first) break;
+    first = candidate;
+    k++;
+  }
+  const rest: string[] = k < words.length ? doc.splitTextToSize(words.slice(k).join(" "), width - indent) : [];
+  return [
+    {
+      h: LINE,
+      draw: (x, y) => {
+        text(doc, head, x + indent, y, "bold", BODY_PT, INK);
+        text(doc, first, x + indent + headW, y, "normal", BODY_PT, INK);
+      },
+    },
+    ...rest.map((t) => ({ h: LINE, draw: (x: number, y: number) => text(doc, t, x + indent, y, "normal", BODY_PT, INK) })),
+  ];
+}
+
+/** Lay out parsed note blocks to `width`. */
+function blockLines(doc: jsPDF, blocks: NoteBlock[], width: number): Line[] {
+  const out: Line[] = [];
+  blocks.forEach((b, i) => {
+    const prev = blocks[i - 1];
+    switch (b.kind) {
+      case "gap":
+        out.push({ h: PARA_GAP });
+        break;
+      case "heading": {
+        if (prev && prev.kind !== "gap") out.push({ h: 1.6 });
+        setFont(doc, "bold", 10.5, INK);
+        const lines: string[] = doc.splitTextToSize(b.text, width);
+        lines.forEach((t, k) =>
+          out.push({ h: 5.4, keepWithNext: k === lines.length - 1, draw: (x, y) => text(doc, t, x, y, "bold", 10.5, INK) })
+        );
+        break;
+      }
+      case "bullet":
+      case "numbered": {
+        const indent = 4 + b.level * 6;
+        const marker = b.kind === "bullet" ? (b.level ? "-" : "•") : b.marker;
+        setFont(doc, "normal", BODY_PT, INK);
+        const hang = Math.max(4.5, doc.getTextWidth(marker) + 2);
+        const lines: string[] = doc.splitTextToSize(b.text, width - indent - hang);
+        lines.forEach((t, k) =>
+          out.push({
+            h: LINE,
+            draw: (x, y) => {
+              if (k === 0) text(doc, marker, x + indent, y, "normal", BODY_PT, b.kind === "bullet" ? ACCENT : INK);
+              text(doc, t, x + indent + hang, y, "normal", BODY_PT, INK);
+            },
+          })
+        );
+        break;
+      }
+      case "para": {
+        if (b.label) {
+          out.push(...labelledLines(doc, b.label, b.text, width));
+        } else {
+          setFont(doc, "normal", BODY_PT, INK);
+          const lines: string[] = doc.splitTextToSize(b.text, width);
+          lines.forEach((t) => out.push({ h: LINE, draw: (x, y) => text(doc, t, x, y, "normal", BODY_PT, INK) }));
+        }
+        break;
+      }
+    }
   });
+  return out;
+}
+
+function setFont(doc: jsPDF, style: "normal" | "bold", size: number, color: RGB) {
+  doc.setFont("helvetica", style);
+  doc.setFontSize(size);
+  doc.setTextColor(...color);
+}
+
+function text(
+  doc: jsPDF,
+  s: string,
+  x: number,
+  y: number,
+  style: "normal" | "bold",
+  size: number,
+  color: RGB,
+  charSpace = 0,
+  align: "left" | "right" = "left"
+) {
+  setFont(doc, style, size, color);
+  doc.text(s, x, y, { baseline: "top", charSpace, align });
+}
+
+function rule(doc: jsPDF, x: number, y: number, w: number, color: RGB, weight: number) {
+  doc.setDrawColor(...color);
+  doc.setLineWidth(weight);
+  doc.line(x, y, x + w, y);
 }
 
 function drawPatientLabel(doc: jsPDF, patientLabel: string, pageW: number) {
-  const label = patientLabel.trim();
+  const label = pdfSafe(patientLabel.trim());
   if (!label) return;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(24, 36, 48);
-  doc.text(label, pageW - M, M, { align: "right", baseline: "top" });
-  doc.setTextColor(0);
+  text(doc, label, pageW - LABEL_M, LABEL_M, "bold", 10, INK, 0, "right");
 }

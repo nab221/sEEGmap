@@ -140,7 +140,7 @@ in the clinical report shows which contacts you are recording from.
 
 ### Export / save
 
-- **Save .seegmap** downloads the full plan (electrodes, sketches, notes, patient label)
+- **Save .seegmap** downloads the full plan (electrodes, sketches, notes, MDT note, patient label)
   as a `.seegmap` JSON file — re-import it later via **Import .seegmap** on Home.
 - **Export PNG** and **Export PDF** produce the same A4 landscape page (300 dpi, ready
   to print at 100 %) with the patient label in the top-right corner; the PDF is that
@@ -149,8 +149,18 @@ in the clinical report shows which contacts you are recording from.
   need to keep.
 - Tick **Legend** (next to the export buttons) to draw a table of electrode names,
   entries and targets beside the figure in the PNG and PDF.
-- Tick **Notes in PDF** to add the plan notes and per-electrode notes to the PDF as
-  extra pages. Both choices are remembered in this browser.
+- **MDT Note** (Planner toolbar) records the MDT where the plan was discussed: meeting
+  name, date, who was present, previous investigations (video-EEG, MRI, PET,
+  neuropsychology…), the discussion (paste it straight from the minutes) and the
+  outcome / decision, with a live preview of the printed page. Line breaks are kept;
+  a short line ending in `:` (or starting with `#`) prints as a heading, lines starting
+  with `-` or `•` as bullets and `1.` as a numbered list, and `Label: text` prints the
+  label in bold. The **H**, **• List** and **1. List** buttons format the selected lines.
+- Tick **MDT note in PDF** to start the PDF with the MDT note on A4 portrait page(s) of
+  selectable text — meeting, previous investigations, discussion, outcome and any
+  per-electrode notes — followed
+  by the schematic on its own landscape page, ready to upload to the patient record.
+  Both tick boxes are remembered in this browser.
 
 ### Maintain the anatomical library
 
