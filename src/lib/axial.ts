@@ -10,6 +10,34 @@ import { isAxialViewId, type AxialViewConfig } from "./axialViews";
 import { findCrossingPx, type BrainMask } from "./brainMask";
 
 export const CONTACT_SPACING_MM = 3.5;
+export const MIN_SPACING_MM = 1;
+export const MAX_SPACING_MM = 20;
+
+/** Spacings offered in the row's dropdown, with the maker that uses them. */
+export const SPACING_PRESETS: { mm: number; label: string }[] = [
+  { mm: 3.5, label: "3.5 mm (DIXI)" },
+  { mm: 4, label: "4 mm" },
+  { mm: 4.5, label: "4.5 mm" },
+  { mm: 5, label: "5 mm (Ad-Tech)" },
+  { mm: 6, label: "6 mm" },
+  { mm: 8, label: "8 mm" },
+  { mm: 10, label: "10 mm (Ad-Tech)" },
+];
+
+/** A placement's contact spacing in mm: its own if valid, else 3.5. */
+export function spacingMmOf(p: Pick<AxialPlacement, "spacingMm">): number {
+  const v = p.spacingMm;
+  return typeof v === "number" && Number.isFinite(v) && v >= MIN_SPACING_MM && v <= MAX_SPACING_MM
+    ? v
+    : CONTACT_SPACING_MM;
+}
+
+/** Set the contact spacing; 3.5 mm (the default) is stored as absent. */
+export function withSpacing(p: AxialPlacement, mm: number): AxialPlacement {
+  const { spacingMm: _drop, ...rest } = p;
+  const v = spacingMmOf({ spacingMm: mm });
+  return v === CONTACT_SPACING_MM ? rest : { ...rest, spacingMm: v };
+}
 export const DEFAULT_CONTACTS = 10;
 export const MIN_CONTACTS = 1;
 export const MAX_CONTACTS = 24;
@@ -106,6 +134,8 @@ export function normalizeAxial(p: AxialPlacement | null | undefined): AxialPlace
   const last = cleanLastInBrain(p.lastInBrain, contacts);
   if (last !== undefined) out.lastInBrain = last;
   if (typeof p.edgeDist === "number" && Number.isFinite(p.edgeDist) && p.edgeDist > 0) out.edgeDist = p.edgeDist;
+  const spacing = spacingMmOf(p);
+  if (spacing !== CONTACT_SPACING_MM) out.spacingMm = spacing;
   return out;
 }
 
@@ -132,27 +162,32 @@ export function cycleContact(p: AxialPlacement, index: number): AxialPlacement {
   return { ...p, tissue };
 }
 
-/** True 3.5 mm contact spacing on a view, in native pixels. */
-export function nominalSpacingPx(view: AxialViewConfig): number {
-  return CONTACT_SPACING_MM / view.mmPerPx;
+/**
+ * True contact spacing on a view, in native pixels: the placement's own spacing, or
+ * 3.5 mm without one (also the size contact dots are drawn at).
+ */
+export function nominalSpacingPx(view: AxialViewConfig, p?: Pick<AxialPlacement, "spacingMm">): number {
+  return (p ? spacingMmOf(p) : CONTACT_SPACING_MM) / view.mmPerPx;
 }
 
 /** How far the fitted spacing may stray from the true scale before the row warns. */
 export const OFF_SCALE_TOLERANCE = 0.25;
 
 /**
- * The drawn spacing never strays further than this from the true scale, whatever the fit
- * asks for: a far edge over a small "last in brain" would otherwise stretch the shaft off
- * the figure. The row still reports (and warns about) the real ratio.
+ * The drawn spacing never strays further than this from the true scale when the edge was
+ * found from the outline: a far edge over a small "last in brain" would otherwise stretch
+ * the shaft off the figure. A hand-set entry is always honoured. The row still reports
+ * (and warns about) the real ratio.
  */
 const DRAW_RATIO_MIN = 0.5;
 const DRAW_RATIO_MAX = 2;
 
 /**
  * How an electrode's contacts are spaced on the figure.
- *  - nominal:     true 3.5 mm spacing.
+ *  - nominal:     true spacing (the electrode's own, 3.5 mm by default).
  *  - fitted:      contacts 1..N+1 stretched or squeezed so the outline falls halfway
- *                 between contact N ("last in brain") and N+1; the rest at 3.5 mm.
+ *                 between contact N ("last in brain") and N+1; the rest at true spacing.
+ *                 With a hand-set entry and every contact in brain, N is the last contact.
  *  - shrunk:      every contact in brain, squeezed so the last one stays inside.
  *  - no-crossing: "last in brain" is set but no outline was found along the shaft.
  */
@@ -173,12 +208,14 @@ export function fitSpacing(a: {
   contacts: number;
   lastInBrain?: number;
   crossingPx: number | null;
+  /** The edge is a hand-set entry: fill it exactly, both ways, with no drawing cap. */
+  handSet?: boolean;
 }): SpacingFit {
   const { nominalPx, contacts } = a;
   const crossing = a.crossingPx !== null && a.crossingPx > 0 ? a.crossingPx : null;
   const make = (innerPx: number, outerPx: number, status: SpacingFit["status"]): SpacingFit => {
     const ratio = innerPx / nominalPx;
-    const drawn = nominalPx * Math.min(DRAW_RATIO_MAX, Math.max(DRAW_RATIO_MIN, ratio));
+    const drawn = a.handSet ? innerPx : nominalPx * Math.min(DRAW_RATIO_MAX, Math.max(DRAW_RATIO_MIN, ratio));
     return {
       innerPx: drawn,
       outerPx: status === "shrunk" ? drawn : outerPx,
@@ -192,6 +229,10 @@ export function fitSpacing(a: {
     if (crossing === null) return make(nominalPx, nominalPx, "no-crossing");
     return make(crossing / (n - 0.5), nominalPx, "fitted");
   }
+  if (crossing !== null && a.handSet) {
+    const inner = crossing / (contacts - 0.5);
+    return make(inner, inner, "fitted");
+  }
   if (crossing !== null && (contacts - 0.5) * nominalPx > crossing) {
     const inner = crossing / (contacts - 0.5);
     return make(inner, inner, "shrunk");
@@ -199,8 +240,8 @@ export function fitSpacing(a: {
   return make(nominalPx, nominalPx, "nominal");
 }
 
-function nominalFit(view: AxialViewConfig): SpacingFit {
-  const px = nominalSpacingPx(view);
+function nominalFit(view: AxialViewConfig, p?: Pick<AxialPlacement, "spacingMm">): SpacingFit {
+  const px = nominalSpacingPx(view, p);
   return { innerPx: px, outerPx: px, ratio: 1, crossingPx: null, status: "nominal" };
 }
 
@@ -246,11 +287,11 @@ function alongShaft(p: AxialPlacement, view: AxialViewConfig, distPx: number): P
  * stays at true spacing, without a warning.
  */
 export function shaftFit(p: AxialPlacement, view: AxialViewConfig, mask: BrainMask | null): SpacingFit {
-  const nominalPx = nominalSpacingPx(view);
+  const nominalPx = nominalSpacingPx(view, p);
   // A plan from before the dropdown, with outside contacts marked by hand: leave it at true
   // spacing, as it was drawn then. Shrinking would pull those contacts back inside.
   if (p.lastInBrain === undefined && p.edgeDist === undefined && p.tissue.includes("outside")) {
-    return nominalFit(view);
+    return nominalFit(view, p);
   }
   let crossingPx: number | null;
   if (p.edgeDist !== undefined) {
@@ -261,9 +302,15 @@ export function shaftFit(p: AxialPlacement, view: AxialViewConfig, mask: BrainMa
     // off-scale fit (wrong view or tip), not as "not found".
     crossingPx = findCrossingPx(mask, tipPx, directionPx(p, view), Math.hypot(view.width, view.height));
   } else {
-    return nominalFit(view);
+    return nominalFit(view, p);
   }
-  return fitSpacing({ nominalPx, contacts: p.contacts, lastInBrain: p.lastInBrain, crossingPx });
+  return fitSpacing({
+    nominalPx,
+    contacts: p.contacts,
+    lastInBrain: p.lastInBrain,
+    crossingPx,
+    handSet: p.edgeDist !== undefined,
+  });
 }
 
 /** Whether the fit strays more than OFF_SCALE_TOLERANCE from the true scale. */
@@ -272,12 +319,12 @@ export function isOffScale(fit: SpacingFit): boolean {
 }
 
 /** Normalized position of every contact; index 0 is the tip (contact 1). True spacing unless a fit is given. */
-export function contactPositions(p: AxialPlacement, view: AxialViewConfig, fit: SpacingFit = nominalFit(view)): Point[] {
+export function contactPositions(p: AxialPlacement, view: AxialViewConfig, fit: SpacingFit = nominalFit(view, p)): Point[] {
   return contactDistancesPx(p.contacts, p.lastInBrain, fit).map((d) => alongShaft(p, view, d));
 }
 
 /** Where the rotate handle sits: one spacing beyond the last contact. */
-export function handlePosition(p: AxialPlacement, view: AxialViewConfig, fit: SpacingFit = nominalFit(view)): Point {
+export function handlePosition(p: AxialPlacement, view: AxialViewConfig, fit: SpacingFit = nominalFit(view, p)): Point {
   const d = contactDistancesPx(p.contacts, p.lastInBrain, fit);
   const step = outsideFrom(p.contacts, p.lastInBrain) === null ? fit.innerPx : fit.outerPx;
   return alongShaft(p, view, d[d.length - 1] + step);
@@ -289,21 +336,38 @@ export function edgePosition(p: AxialPlacement, view: AxialViewConfig, fit: Spac
 }
 
 /**
- * Where the draggable edge bar goes, in native px from the tip: the edge the fit used, or,
- * when no edge was found, the true-scale position halfway between the last contact in
- * brain and the next, so the edge can still be set by hand. Null when "last in brain"
- * marks nothing outside (no bar).
+ * Where the draggable entry bar goes, in native px from the tip.
+ *  - A hand-set entry: there.
+ *  - Some contacts outside: the edge the fit used, or, when no edge was found, the
+ *    true-scale position halfway between the last contact in brain and the next.
+ *  - Every contact in brain: half a spacing past the last contact, where the drawing
+ *    already puts the edge, so dragging it outward stretches the shaft smoothly.
  */
-export function edgeHandleDistPx(p: AxialPlacement, view: AxialViewConfig, fit: SpacingFit): number | null {
+export function edgeHandleDistPx(p: AxialPlacement, view: AxialViewConfig, fit: SpacingFit): number {
+  if (p.edgeDist !== undefined && fit.crossingPx !== null) return fit.crossingPx;
   const n = outsideFrom(p.contacts, p.lastInBrain);
-  if (n === null) return null;
-  return fit.crossingPx ?? (n - 0.5) * nominalSpacingPx(view);
+  if (n === null) return (p.contacts - 0.5) * fit.innerPx;
+  return fit.crossingPx ?? (n - 0.5) * nominalSpacingPx(view, p);
 }
 
-/** The edge bar's position, normalized, or null when there is no bar. */
-export function edgeHandlePosition(p: AxialPlacement, view: AxialViewConfig, fit: SpacingFit): Point | null {
-  const d = edgeHandleDistPx(p, view, fit);
-  return d === null ? null : alongShaft(p, view, d);
+/** The entry bar's position, normalized. */
+export function edgeHandlePosition(p: AxialPlacement, view: AxialViewConfig, fit: SpacingFit): Point {
+  return alongShaft(p, view, edgeHandleDistPx(p, view, fit));
+}
+
+/**
+ * Point the shaft at a brain entry and fill the span to it with the contacts in brain
+ * (stretching or squeezing them). The tip stays put; an entry on the tip changes nothing.
+ */
+export function withEntry(p: AxialPlacement, view: AxialViewConfig, entry: Point): AxialPlacement {
+  const dist = Math.hypot((entry.x - p.tip.x) * view.width, (entry.y - p.tip.y) * view.height);
+  if (dist < 1e-6) return p;
+  return { ...p, toward: { x: entry.x, y: entry.y }, edgeDist: dist };
+}
+
+/** Move the tip (contact 1) to a target, keeping the shaft's direction. */
+export function withTarget(p: AxialPlacement, target: Point): AxialPlacement {
+  return translateAxial(p, target.x - p.tip.x, target.y - p.tip.y);
 }
 
 /** Signed distance (native px) of a normalized point along the shaft from the tip. */
@@ -323,18 +387,19 @@ export function translateAxial(p: AxialPlacement, dx: number, dy: number): Axial
 /**
  * First placement on a view. Axial views: tip in the electrode's hemisphere *as that view
  * shows it*, shaft pointing laterally out of the brain; names with no L/R go on the
- * viewer's left. Sagittal views: tip near the centre, shaft pointing up. Contacts, marks
- * and "last in brain" carry over from `keep`; a hand-set edge never does, as it belongs
+ * viewer's left. Sagittal views: tip near the centre, shaft pointing up. Contacts, marks,
+ * spacing and "last in brain" carry over from `keep`; a hand-set edge never does, as it belongs
  * to the old view.
  */
 export function defaultAxialPlacement(
   view: AxialViewConfig,
   hemisphere: Hemisphere | null,
-  keep?: Pick<AxialPlacement, "contacts" | "tissue" | "lastInBrain">
+  keep?: Pick<AxialPlacement, "contacts" | "tissue" | "lastInBrain" | "spacingMm">
 ): AxialPlacement {
   const contacts = keep ? clampContacts(keep.contacts) : DEFAULT_CONTACTS;
   const tissue = cleanTissue(keep?.tissue, contacts);
-  const withKept = (p: AxialPlacement) => setLastInBrain(p, keep?.lastInBrain);
+  const withKept = (p: AxialPlacement) =>
+    withSpacing(setLastInBrain(p, keep?.lastInBrain), keep ? spacingMmOf(keep) : CONTACT_SPACING_MM);
   if (view.kind === "sagittal") {
     return withKept({ view: view.id, tip: { x: 0.5, y: 0.55 }, toward: { x: 0.5, y: 0.3 }, contacts, tissue });
   }

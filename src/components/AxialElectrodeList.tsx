@@ -7,6 +7,7 @@ import { AXIAL_VIEWS, viewPickerOrder } from "../lib/axialViews";
 import {
   MAX_CONTACTS,
   MIN_CONTACTS,
+  SPACING_PRESETS,
   defaultAxialPlacement,
   effectiveTissue,
   formatTissueRanges,
@@ -15,16 +16,25 @@ import {
   normalizeAxial,
   setLastInBrain,
   shaftFit,
+  spacingMmOf,
   withContactCount,
+  withSpacing,
 } from "../lib/axial";
 import { useBrainMask } from "../lib/useBrainMask";
+import type { Marking } from "./AxialCanvas";
 
 /**
  * Side list for the Electrode view: per depth electrode, which outline it goes on (or
- * Off), how many contacts it has, the last contact in brain, how the shaft fits the
- * outline, and its marked contact ranges.
+ * Off), how many contacts it has and how far apart, the last contact in brain, how the
+ * shaft fits the outline, and its marked contact ranges. "Mark" starts click-to-place.
  */
-export default function AxialElectrodeList() {
+export default function AxialElectrodeList({
+  marking,
+  onMarking,
+}: {
+  marking: Marking | null;
+  onMarking: (next: Marking | null) => void;
+}) {
   const electrodes = useStore((s) => s.electrodes);
   const updateElectrode = useStore((s) => s.updateElectrode);
 
@@ -106,6 +116,8 @@ export default function AxialElectrodeList() {
                     placement={placement}
                     onContacts={(n) => setContacts(e, n)}
                     onChange={(next) => setPlacement(e, next)}
+                    marking={marking?.electrodeId === e.id ? marking : null}
+                    onMark={(on) => onMarking(on ? { electrodeId: e.id, step: "target" } : null)}
                   />
                 )}
               </div>
@@ -123,17 +135,25 @@ function PlacementDetails({
   placement,
   onContacts,
   onChange,
+  marking,
+  onMark,
 }: {
   electrode: Electrode;
   placement: AxialPlacement;
   onContacts: (n: number) => void;
   onChange: (next: AxialPlacement) => void;
+  marking: Marking | null;
+  onMark: (on: boolean) => void;
 }) {
   const mask = useBrainMask(placement.view);
   const fit = shaftFit(placement, AXIAL_VIEWS[placement.view], mask);
   const pct = Math.round(fit.ratio * 100);
   const warn = isOffScale(fit) || fit.status === "no-crossing";
   const small = { fontSize: 11.5, color: "var(--muted)" } as const;
+  const spacing = spacingMmOf(placement);
+  const presets = SPACING_PRESETS.some((s) => s.mm === spacing)
+    ? SPACING_PRESETS
+    : [...SPACING_PRESETS, { mm: spacing, label: `${spacing} mm` }].sort((a, b) => a.mm - b.mm);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 6, paddingLeft: 26 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -157,14 +177,40 @@ function PlacementDetails({
           </select>
         </label>
       </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11.5, color: "var(--muted)" }}>
+          Spacing
+          <select
+            value={spacing}
+            onChange={(ev) => onChange(withSpacing(placement, Number(ev.target.value)))}
+            aria-label={`Contact spacing for ${electrode.name}`}
+            title="Centre-to-centre distance between contacts"
+            style={{ fontSize: 12, padding: "2px 4px", borderRadius: 6, border: "1px solid var(--line-strong)" }}
+          >
+            {presets.map((s) => (
+              <option key={s.mm} value={s.mm}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className={marking ? "btn btn-sm btn-primary" : "btn btn-sm"}
+          style={{ height: 22, padding: "0 8px", fontSize: 11 }}
+          onClick={() => onMark(!marking)}
+          title="Click the target, then where the electrode enters the brain; the contacts in brain fill the span"
+        >
+          {marking ? (marking.step === "target" ? "Click the target… (Esc)" : "Click the entry… (Esc)") : "Mark target → entry"}
+        </button>
+      </div>
       {(fit.status !== "nominal" || placement.edgeDist !== undefined) && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, ...small, color: warn ? "#b45309" : small.color }}>
           <span style={{ flex: 1 }}>
             {fit.status === "no-crossing"
               ? "⚠ Brain edge not found; standard spacing"
               : isOffScale(fit)
-                ? `⚠ ${pct}% of true scale. Try another view or check the tip`
-                : `Scale ${pct}%`}
+                ? `⚠ ${pct}% of true ${spacing} mm scale. Try another view or check the tip and entry`
+                : `Scale ${pct}%${placement.edgeDist !== undefined ? " (entry set by hand)" : ""}`}
           </span>
           {placement.edgeDist !== undefined && (
             <button
@@ -176,7 +222,7 @@ function PlacementDetails({
               }}
               title="Go back to the edge found from the outline"
             >
-              Reset edge
+              Reset entry
             </button>
           )}
         </div>
@@ -202,7 +248,7 @@ function ContactCount({ value, onCommit, label }: { value: number; onCommit: (n:
 
   const btn = { padding: "0 7px", height: 24, minWidth: 24 } as const;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 3 }} title="Number of contacts (3.5 mm spacing)">
+    <div style={{ display: "flex", alignItems: "center", gap: 3 }} title="Number of contacts">
       <button className="btn btn-sm" style={btn} disabled={value <= MIN_CONTACTS} onClick={() => onCommit(value - 1)}>
         −
       </button>

@@ -22,7 +22,12 @@ import {
   resizeTissue,
   setLastInBrain,
   translateAxial,
+  nominalSpacingPx,
+  spacingMmOf,
   withContactCount,
+  withEntry,
+  withSpacing,
+  withTarget,
 } from "./axial";
 import { viewPickerOrder } from "./axialViews";
 import type { BrainMask } from "./brainMask";
@@ -486,7 +491,79 @@ describe("review fixes", () => {
     expect(edgeHandleDistPx(q, V, found)).toBe(22.5);
     const lost: SpacingFit = { innerPx: 10, outerPx: 10, ratio: 1, crossingPx: null, status: "no-crossing" };
     expect(edgeHandleDistPx(q, V, lost)).toBeCloseTo(25, 9);
-    expect(edgeHandleDistPx({ ...q, lastInBrain: undefined }, V, lost)).toBeNull();
-    expect(edgeHandleDistPx({ ...q, lastInBrain: 10 }, V, lost)).toBeNull();
+    // Every contact in brain: half a spacing past the last contact, as drawn.
+    const all: SpacingFit = { innerPx: 8, outerPx: 8, ratio: 0.8, crossingPx: 76, status: "shrunk" };
+    expect(edgeHandleDistPx({ ...q, lastInBrain: undefined }, V, all)).toBeCloseTo(76, 9);
+    expect(edgeHandleDistPx({ ...q, lastInBrain: 10 }, V, lost)).toBeCloseTo(95, 9);
+  });
+});
+
+describe("contact spacing", () => {
+  const q: AxialPlacement = { ...p, contacts: 10, tissue: Array(10).fill("grey") };
+
+  it("draws at the electrode's own spacing", () => {
+    const ad = withSpacing(q, 5);
+    expect(ad.spacingMm).toBe(5);
+    expect(nominalSpacingPx(V, ad)).toBeCloseTo(5 / 0.35, 9);
+    const pts = contactPositions(ad, V);
+    expect(pxDist(pts[0], pts[1], V)).toBeCloseTo(5 / 0.35, 6);
+  });
+
+  it("stores 3.5 mm as absent and ignores nonsense", () => {
+    expect("spacingMm" in withSpacing({ ...q, spacingMm: 5 }, 3.5)).toBe(false);
+    expect(spacingMmOf({ spacingMm: -2 })).toBe(3.5);
+    expect(spacingMmOf({ spacingMm: Number.NaN })).toBe(3.5);
+    expect(normalizeAxial({ ...q, spacingMm: 5 })!.spacingMm).toBe(5);
+    expect("spacingMm" in normalizeAxial({ ...q, spacingMm: 99 })!).toBe(false);
+  });
+
+  it("carries over to another view and when mirrored", () => {
+    expect(defaultAxialPlacement(VL, "L", { ...q, spacingMm: 5 }).spacingMm).toBe(5);
+    expect(mirrorAxial({ ...q, spacingMm: 5 }, V).spacingMm).toBe(5);
+  });
+
+  it("checks the scale against the electrode's own spacing", () => {
+    const mask: BrainMask = { width: 400, height: 500, data: new Uint8Array(400 * 500) };
+    for (let y = 0; y < 500; y++) for (let x = 50; x < 350; x++) mask.data[y * 400 + x] = 1;
+    // Tip at x 100, edge at x 50: 50 px. 5 mm = 14.29 px; last in brain 4 → 50 / 3.5 ≈ 14.29.
+    const f = shaftFit(withSpacing({ ...q, lastInBrain: 4 }, 5), V, mask);
+    expect(f.ratio).toBeGreaterThan(0.95);
+    expect(f.ratio).toBeLessThan(1.05);
+  });
+});
+
+describe("hand-set entry", () => {
+  const q: AxialPlacement = { ...p, contacts: 10, tissue: Array(10).fill("grey") };
+
+  it("stretches every contact in brain to reach the entry, past the usual cap", () => {
+    const f = fitSpacing({ nominalPx: 10, contacts: 10, crossingPx: 285, handSet: true });
+    expect(f.status).toBe("fitted");
+    expect(f.innerPx).toBeCloseTo(30, 9);
+    expect(f.ratio).toBeCloseTo(3, 9);
+    // Found from the outline, the same edge would leave every contact in brain at 3.5 mm.
+    expect(fitSpacing({ nominalPx: 10, contacts: 10, crossingPx: 285 }).innerPx).toBe(10);
+  });
+
+  it("is not capped when some contacts are outside", () => {
+    const f = fitSpacing({ nominalPx: 10, contacts: 15, lastInBrain: 2, crossingPx: 90, handSet: true });
+    expect(f.innerPx).toBeCloseTo(60, 9);
+    expect(f.outerPx).toBe(10);
+  });
+
+  it("marks the target, then the entry, and lands the edge past the last contact", () => {
+    const t = withTarget(q, { x: 0.5, y: 0.5 });
+    expectPoint(t.tip, { x: 0.5, y: 0.5 });
+    const e = withEntry(t, V, { x: 0.5, y: 0.2 });
+    expect(e.edgeDist).toBeCloseTo(150, 9);
+    const f = shaftFit(e, V, null);
+    expect(f.innerPx).toBeCloseTo(150 / 9.5, 9);
+    const pts = contactPositions(e, V, f);
+    expect(pts[9].x).toBeCloseTo(0.5, 9);
+    expect(pts[9].y).toBeLessThan(0.5);
+    expect(edgeHandleDistPx(e, V, f)).toBeCloseTo(150, 9);
+  });
+
+  it("ignores an entry on the tip", () => {
+    expect(withEntry(q, V, q.tip)).toBe(q);
   });
 });
