@@ -301,8 +301,11 @@ export async function exportWorkspacePptx({
         if (targetVisible) addTargetX(slide, le, e.color);
         const mt = e.medialTarget && targetVisible ? toSlide(e.medialTarget) : null;
         if (mt) addTargetX(slide, mt, e.color);
+        const lent = e.lateralEntry ? toSlide(e.lateralEntry) : null;
+        if (lent) addDot(slide, lent, e.color);
         if (showNames) {
           addNameLabel(slide, ls, e.name, e.color, false);
+          if (lent) addNameLabel(slide, lent, e.name, e.color, false);
           if (mt) addNameLabel(slide, mt, e.name, e.color, true);
         }
       }

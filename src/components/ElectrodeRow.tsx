@@ -3,7 +3,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useStore } from "../store/useStore";
 import type { Electrode } from "../types";
-import { lateralToMedial } from "../lib/coords";
+import { lateralToMedial, medialToLateral } from "../lib/coords";
 
 const GRIP = (
   <svg width="12" height="14" viewBox="0 0 14 14" fill="none">
@@ -275,6 +275,33 @@ export default function ElectrodeRow({
                 style={{ whiteSpace: "nowrap" }}
               >
                 {electrode.medialTarget ? "Remove medial ✕" : "Add medial ✕"}
+              </button>
+            </div>
+          )}
+          {electrode.type === "superior-inferior" && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                {electrode.lateralEntry
+                  ? "Lateral entry (●) shown on the lateral view -- drag it into place."
+                  : "Mark where the electrode enters on the lateral view."}
+              </span>
+              <button
+                className="btn btn-sm"
+                onClick={() => {
+                  if (electrode.lateralEntry) {
+                    updateElectrode(electrode.id, { lateralEntry: undefined } as Partial<Electrode>);
+                    return;
+                  }
+                  let p = medialToLateral(electrode.lateralStart, regions);
+                  // Trajectory already on the lateral view: nudge so the new dot doesn't hide the existing one.
+                  if (p.x === electrode.lateralStart.x && p.y === electrode.lateralStart.y) {
+                    p = { x: p.x, y: Math.max(0, p.y - 0.04) };
+                  }
+                  updateElectrode(electrode.id, { lateralEntry: p } as Partial<Electrode>);
+                }}
+                style={{ whiteSpace: "nowrap" }}
+              >
+                {electrode.lateralEntry ? "Remove lateral ●" : "Add lateral ●"}
               </button>
             </div>
           )}

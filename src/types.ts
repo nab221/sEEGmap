@@ -89,6 +89,12 @@ export interface SuperiorInferiorElectrode extends BaseElectrode {
    * electrode ending near the amygdala). Absent on most electrodes.
    */
   medialTarget?: Point;
+  /**
+   * Optional entry marker (dot) on the same hemisphere's *lateral* view, for a
+   * trajectory drawn on the medial view whose entry is on the lateral surface.
+   * Absent on most electrodes.
+   */
+  lateralEntry?: Point;
 }
 
 /**
