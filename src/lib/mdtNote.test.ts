@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { formatMdtDate, isMdtEmpty, mdtPlainText, parseNoteText, pdfSafe, EMPTY_MDT } from "./mdtNote";
+import {
+  EMPTY_MDT,
+  filledSeizures,
+  formatMdtDate,
+  isMdtEmpty,
+  mdtPlainText,
+  normaliseMdt,
+  parseNoteText,
+  pdfSafe,
+  seizureTitle,
+  seizureTypeLine,
+  applySymbolShortcuts,
+} from "./mdtNote";
 
 describe("parseNoteText", () => {
   it("keeps paragraphs and collapses blank lines into one gap", () => {
@@ -65,9 +77,10 @@ describe("formatMdtDate", () => {
 });
 
 describe("pdfSafe", () => {
-  it("keeps Windows-1252 text and replaces symbols the PDF font lacks", () => {
+  it("keeps text the PDF fonts can draw and replaces the rest", () => {
     expect(pdfSafe("“Café” – 5 µV • ok")).toBe("“Café” – 5 µV • ok");
-    expect(pdfSafe("SOZ → R mesial ≥ 2 ✓")).toBe("SOZ -> R mesial >= 2 Yes");
+    expect(pdfSafe("SOZ → R mesial ≥ 2 ✓ θ")).toBe("SOZ → R mesial ≥ 2 ✓ θ");
+    expect(pdfSafe("a ‑ b ✗")).toBe("a - b x");
     expect(pdfSafe("海")).toBe("?");
   });
 });
@@ -77,11 +90,28 @@ describe("isMdtEmpty / mdtPlainText", () => {
     expect(isMdtEmpty(EMPTY_MDT, "  ")).toBe(true);
     expect(isMdtEmpty({ ...EMPTY_MDT, outcome: "x" }, "")).toBe(false);
     expect(isMdtEmpty({ ...EMPTY_MDT, investigations: "MRI: normal" }, "")).toBe(false);
+    const blank = { id: "a", label: " ", ilaeType: "", description: "", frequency: "" };
+    expect(isMdtEmpty({ ...EMPTY_MDT, seizures: [blank] }, "")).toBe(true);
+    expect(isMdtEmpty({ ...EMPTY_MDT, seizures: [{ ...blank, frequency: "daily" }] }, "")).toBe(false);
   });
 
   it("writes a plain-text version with the default meeting name", () => {
-    expect(mdtPlainText({ ...EMPTY_MDT, date: "2026-11-12", investigations: "MRI: normal", outcome: "Go" }, "Talked")).toEqual([
+    const seizures = [
+      { id: "a", label: "Habitual", ilaeType: "FIC", description: "Rising sensation, then automatisms", frequency: "3/month" },
+      { id: "b", label: "", ilaeType: "", description: "", frequency: "" },
+      { id: "c", label: "", ilaeType: "FBTC", description: "Nocturnal", frequency: "" },
+    ];
+    expect(
+      mdtPlainText({ ...EMPTY_MDT, date: "2026-11-12", seizures, investigations: "MRI: normal", outcome: "Go" }, "Talked")
+    ).toEqual([
       "Epilepsy Surgery MDT — 12 November 2026",
+      "",
+      "Seizure semiology and frequency:",
+      "Seizure 1: Habitual — 3/month",
+      "ILAE type: Focal impaired consciousness seizure (FIC)",
+      "Rising sensation, then automatisms",
+      "Seizure 2: Focal-to-bilateral tonic-clonic seizure (FBTC)",
+      "Nocturnal",
       "",
       "Previous investigations:",
       "MRI: normal",
@@ -92,5 +122,61 @@ describe("isMdtEmpty / mdtPlainText", () => {
       "Outcome / decision:",
       "Go",
     ]);
+  });
+});
+
+describe("seizures", () => {
+  it("numbers seizures and uses the name when given", () => {
+    const sz = { id: "a", label: "  Habitual ", ilaeType: "", description: "", frequency: "" };
+    expect(seizureTitle(sz, 0)).toBe("Seizure 1: Habitual");
+    expect(seizureTitle({ ...sz, label: "" }, 2)).toBe("Seizure 3");
+  });
+
+  it("titles an unnamed seizure by its ILAE type, and prints the type separately when named", () => {
+    const sz = { id: "a", label: "", ilaeType: "TA", description: "", frequency: "" };
+    expect(seizureTitle(sz, 0)).toBe("Seizure 1: Typical absence seizure (TA)");
+    expect(seizureTypeLine(sz)).toBe("");
+    expect(seizureTypeLine({ ...sz, label: "Habitual" })).toBe("Typical absence seizure (TA)");
+    expect(filledSeizures([sz])).toEqual([sz]);
+  });
+
+  it("leaves blank seizures off", () => {
+    const blank = { id: "a", label: "", ilaeType: "", description: "  ", frequency: "" };
+    const full = { id: "b", label: "", ilaeType: "", description: "x", frequency: "" };
+    expect(filledSeizures([blank, full])).toEqual([full]);
+  });
+});
+
+describe("normaliseMdt", () => {
+  it("fills in fields missing from older saves", () => {
+    expect(normaliseMdt(undefined)).toEqual(EMPTY_MDT);
+    expect(normaliseMdt({ meeting: "MDT", outcome: "Go" } as never)).toEqual({ ...EMPTY_MDT, meeting: "MDT", outcome: "Go" });
+  });
+
+  it("repairs malformed seizures from a hand-edited file", () => {
+    const raw = { seizures: [null, { label: "A", frequency: 3 }, "x"] } as never;
+    expect(normaliseMdt(raw).seizures).toEqual([{ id: "seizure-1", label: "A", ilaeType: "", description: "", frequency: "" }]);
+  });
+
+  it("keeps known ILAE types and drops unknown ones", () => {
+    const raw = { seizures: [{ id: "a", ilaeType: "GTC" }, { id: "b", ilaeType: "XYZ" }] } as never;
+    expect(normaliseMdt(raw).seizures.map((s) => s.ilaeType)).toEqual(["GTC", ""]);
+  });
+});
+
+describe("applySymbolShortcuts", () => {
+  it("turns typed arrows and comparisons into symbols, longest first", () => {
+    expect(applySymbolShortcuts("Seizure 1 -> generalisation => FBTC")).toBe("Seizure 1 → generalisation ⇒ FBTC");
+    expect(applySymbolShortcuts("a <-> b <=> c <- d")).toBe("a ↔ b ⇔ c ← d");
+    expect(applySymbolShortcuts("x >= 2, y <= 3, z != 4")).toBe("x ≥ 2, y ≤ 3, z ≠ 4");
+  });
+
+  it("leaves bullets and dashes alone", () => {
+    expect(parseNoteText("- one -> two")).toEqual([{ kind: "bullet", text: "one → two", level: 0 }]);
+    expect(applySymbolShortcuts("left - right")).toBe("left - right");
+  });
+
+  it("is applied to PDF text", () => {
+    expect(pdfSafe("Rare (<= 1 / month) -> FBTC")).toBe("Rare (≤ 1 / month) → FBTC");
   });
 });

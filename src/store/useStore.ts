@@ -18,7 +18,7 @@ import type {
   TextAnnotation,
 } from "../types";
 import { CURRENT_FORMAT_VERSION } from "../types";
-import { EMPTY_MDT } from "../lib/mdtNote";
+import { EMPTY_MDT, normaliseMdt } from "../lib/mdtNote";
 import {
   buildLateralMedialName,
   isNameTaken,
@@ -536,7 +536,7 @@ export const useStore = create<StoreState>((set, get) => ({
       texts,
       patientLabel: session?.patientLabel ?? "",
       planNotes: session?.planNotes ?? "",
-      mdt: { ...EMPTY_MDT, ...session?.mdt },
+      mdt: normaliseMdt(session?.mdt),
       hydrated: true,
       figure,
       ...withActive(get().libraries, figure),
@@ -1095,7 +1095,7 @@ export const useStore = create<StoreState>((set, get) => ({
       texts: file.texts ?? [],
       patientLabel: file.patientLabel ?? "",
       planNotes: file.planNotes ?? "",
-      mdt: { ...EMPTY_MDT, ...file.mdt },
+      mdt: normaliseMdt(file.mdt),
       selectedId: null,
       selectedSketchId: null,
       selectedTextId: null,

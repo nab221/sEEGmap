@@ -1,8 +1,21 @@
 import type { jsPDF } from "jspdf";
 import { renderPlannerPage } from "./png";
 import { addPageImages, newPdf, savePdf } from "./page";
-import { DEFAULT_MEETING, formatMdtDate, isMdtEmpty, parseNoteText, pdfSafe, type NoteBlock } from "../mdtNote";
-import type { Electrode, MdtNote } from "../../types";
+import { drawText, measure, wrapText } from "./pdfText";
+import {
+  DEFAULT_MEETING,
+  filledSeizures,
+  formatMdtDate,
+  isMdtEmpty,
+  laterSections,
+  parseNoteText,
+  pdfSafe,
+  seizureTitle,
+  seizureTypeLine,
+  type NoteBlock,
+} from "../mdtNote";
+import { asmDose, asmName, asmStatus, asmSummary, filledAsms, historySection, type FactSection } from "../clinical";
+import type { Electrode, MdtAsm, MdtNote } from "../../types";
 
 interface PdfOptions {
   node: HTMLElement;
@@ -78,6 +91,8 @@ interface Line {
   draw?: (x: number, y: number) => void;
   /** Don't let a page break separate this line from the next (headings). */
   keepWithNext?: boolean;
+  /** Room (mm) needed below this line on the same page, e.g. for a section heading's first lines. */
+  minAfter?: number;
 }
 
 interface NoteContent {
@@ -89,9 +104,9 @@ interface NoteContent {
 
 /**
  * Write the MDT note onto `doc`, starting on its current (first, portrait) page and adding
- * portrait pages as needed: meeting name and date, who was present, previous
- * investigations, the discussion text,
- * the outcome in a shaded box, and the per-electrode notes.
+ * portrait pages as needed: meeting name and date, who was present, each seizure type
+ * with its frequency, previous investigations, the discussion text, the outcome in a
+ * shaded box, and the per-electrode notes.
  */
 export function writeMdtNote(doc: jsPDF, { patientLabel, mdt, discussion, electrodes }: NoteContent) {
   const pageW = doc.internal.pageSize.getWidth();
@@ -111,7 +126,7 @@ export function writeMdtNote(doc: jsPDF, { patientLabel, mdt, discussion, electr
   const place = (lines: Line[]) => {
     lines.forEach((line, i) => {
       const next = lines[i + 1];
-      const need = line.h + (line.keepWithNext && next ? next.h : 0);
+      const need = line.h + (line.keepWithNext && next ? next.h : 0) + (line.minAfter ?? 0);
       if (flow.y + need > bottom && flow.y > TOP) {
         newPage();
         if (!line.draw) return; // no spacer at the top of a page
@@ -125,7 +140,7 @@ export function writeMdtNote(doc: jsPDF, { patientLabel, mdt, discussion, electr
   const title = pdfSafe(mdt.meeting.trim() || DEFAULT_MEETING);
   const date = formatMdtDate(mdt.date);
   setFont(doc, "bold", 16, INK);
-  const titleLines: string[] = doc.splitTextToSize(title, width);
+  const titleLines: string[] = wrapText(doc, title, width);
   place(titleLines.map((t) => ({ h: 7, draw: (x, y) => text(doc, t, x, y, "bold", 16, INK) })));
   if (date) place([{ h: 6, draw: (x, y) => text(doc, pdfSafe(date), x, y + 0.6, "normal", 11, MUTED) }]);
   place([{ h: 3 }, { h: 5, draw: (x, y) => rule(doc, x, y, width, ACCENT, 0.6) }]);
@@ -134,6 +149,54 @@ export function writeMdtNote(doc: jsPDF, { patientLabel, mdt, discussion, electr
     place(labelledLines(doc, "Present", pdfSafe(mdt.attendees.trim().replace(/\s*\n\s*/g, ", ")), width));
     place([{ h: 3 }]);
   }
+
+  const placeFacts = (section: FactSection) => {
+    if (!section.facts.length) return;
+    place(sectionHeading(doc, section.heading, width));
+    place(factLines(doc, section, width));
+    place([{ h: 5 }]);
+  };
+
+  placeFacts(historySection(mdt.history));
+
+  // Seizure semiology and frequency: one entry per seizure type.
+  const seizures = filledSeizures(mdt.seizures);
+  if (seizures.length) {
+    place(sectionHeading(doc, "Seizure semiology and frequency", width));
+    seizures.forEach((sz, i) => {
+      if (i > 0) place([{ h: 2.6 }]);
+      place(seizureLines(doc, pdfSafe(seizureTitle(sz, i)), pdfSafe(sz.frequency.trim()), width));
+      const typeLine = seizureTypeLine(sz);
+      if (typeLine) {
+        setFont(doc, "normal", 9, MUTED);
+        const lines = wrapText(doc, pdfSafe(`ILAE: ${typeLine}`), width - SEIZURE_INDENT);
+        place(lines.map((t) => ({ h: 4.4, draw: (x, y) => text(doc, t, x + SEIZURE_INDENT, y, "normal", 9, MUTED) })));
+      }
+      const desc = parseNoteText(pdfSafe(sz.description));
+      place(shift(blockLines(doc, desc, width - SEIZURE_INDENT), SEIZURE_INDENT));
+    });
+    place([{ h: 5 }]);
+  }
+
+  // Anti-seizure medication: a drug / dose / status table, then the counts.
+  const asms = filledAsms(mdt.asms);
+  if (asms.length) {
+    place(sectionHeading(doc, "Anti-seizure medication", width));
+    asms.forEach((a, i) => place(asmRow(doc, a, width, i < asms.length - 1)));
+    asmSummary(mdt.asms).forEach((line, i) => {
+      const style = i === 0 ? "normal" : "bold";
+      const color = i === 0 ? MUTED : ACCENT;
+      setFont(doc, style, 9.5, color);
+      const lines = wrapText(doc, pdfSafe(line), width);
+      place([
+        ...(i === 0 ? [{ h: 1.5 }] : []),
+        ...lines.map((t) => ({ h: 4.6, draw: (x: number, y: number) => text(doc, t, x, y, style, 9.5, color) })),
+      ]);
+    });
+    place([{ h: 5 }]);
+  }
+
+  laterSections(mdt).forEach(placeFacts);
 
   // Previous investigations, then the discussion
   const sections: [string, string][] = [
@@ -191,7 +254,7 @@ export function writeMdtNote(doc: jsPDF, { patientLabel, mdt, discussion, electr
     const nameW = 30;
     withNotes.forEach((e, idx) => {
       setFont(doc, "normal", BODY_PT, INK);
-      const noteLines: string[] = doc.splitTextToSize(pdfSafe(e.notes.trim()), width - nameW);
+      const noteLines: string[] = wrapText(doc, pdfSafe(e.notes.trim()), width - nameW);
       const rows: Line[] = noteLines.map((t, k) => ({
         h: LINE,
         draw: (x, y) => {
@@ -216,11 +279,108 @@ function addPageNumbers(doc: jsPDF, count: number) {
   }
 }
 
+/** "Label: value" lines; a value's own line breaks start new lines under it. */
+function factLines(doc: jsPDF, section: FactSection, width: number): Line[] {
+  const out: Line[] = [];
+  for (const f of section.facts) {
+    const [first, ...more] = pdfSafe(f.value).split(/\n/);
+    if (f.label) {
+      out.push(...labelledLines(doc, pdfSafe(f.label), first, width));
+    } else {
+      setFont(doc, "normal", BODY_PT, INK);
+      wrapText(doc, first, width).forEach((t) => out.push({ h: LINE, draw: (x, y) => text(doc, t, x, y, "normal", BODY_PT, INK) }));
+    }
+    for (const para of more) {
+      if (!para.trim()) continue;
+      setFont(doc, "normal", BODY_PT, INK);
+      wrapText(doc, para.trim(), width).forEach((t) =>
+        out.push({ h: LINE, draw: (x, y) => text(doc, t, x, y, "normal", BODY_PT, INK) })
+      );
+    }
+  }
+  return out;
+}
+
+/** Column widths of the ASM table, in mm. */
+const ASM_NAME_W = 44;
+const ASM_DOSE_W = 30;
+
+/** One ASM table row: drug (bold), dose and status, each wrapped in its column. */
+function asmRow(doc: jsPDF, a: MdtAsm, width: number, ruleAfter: boolean): Line[] {
+  setFont(doc, "bold", BODY_PT, INK);
+  const name = wrapText(doc, pdfSafe(asmName(a)), ASM_NAME_W - 3);
+  setFont(doc, "normal", BODY_PT, INK);
+  const dose = wrapText(doc, pdfSafe(asmDose(a)), ASM_DOSE_W - 3);
+  const status = wrapText(doc, pdfSafe(asmStatus(a)), width - ASM_NAME_W - ASM_DOSE_W);
+  const n = Math.max(name.length, dose.length, status.length);
+  const rows: Line[] = [];
+  for (let k = 0; k < n; k++) {
+    rows.push({
+      h: LINE,
+      keepWithNext: k < n - 1,
+      draw: (x, y) => {
+        if (name[k]) text(doc, name[k], x, y, "bold", BODY_PT, INK);
+        if (dose[k]) text(doc, dose[k], x + ASM_NAME_W, y, "normal", BODY_PT, INK);
+        if (status[k]) text(doc, status[k], x + ASM_NAME_W + ASM_DOSE_W, y, "normal", BODY_PT, INK);
+      },
+    });
+  }
+  if (ruleAfter) rows.push({ h: 1.8, draw: (x, y) => rule(doc, x, y + 0.6, width, RULE, 0.2) });
+  return rows;
+}
+
+/** Seizure descriptions sit this far in from their title. */
+const SEIZURE_INDENT = 5;
+
+/**
+ * A seizure's title in bold, with its frequency at the right-hand end of the same line
+ * when both fit, or on the next line (indented) when they don't.
+ */
+function seizureLines(doc: jsPDF, title: string, frequency: string, width: number): Line[] {
+  const TITLE_PT = 10.5;
+  setFont(doc, "bold", TITLE_PT, INK);
+  const titleLines: string[] = wrapText(doc, title, width);
+  const freq = frequency ? `Frequency: ${frequency}` : "";
+  setFont(doc, "bold", BODY_PT, ACCENT);
+  const freqW = freq ? measure(doc, freq) : 0;
+  setFont(doc, "bold", TITLE_PT, INK);
+  const lastW = measure(doc, titleLines[titleLines.length - 1]);
+  const sameLine = !!freq && lastW + 8 + freqW <= width;
+
+  const out: Line[] = titleLines.map((t, k) => ({
+    h: 5.4,
+    keepWithNext: true,
+    draw: (x: number, y: number) => {
+      text(doc, t, x, y, "bold", TITLE_PT, INK);
+      if (sameLine && k === titleLines.length - 1) text(doc, freq, x + width, y + 0.4, "bold", BODY_PT, ACCENT, 0, "right");
+    },
+  }));
+  if (freq && !sameLine) {
+    setFont(doc, "bold", BODY_PT, ACCENT);
+    const lines: string[] = wrapText(doc, freq, width - SEIZURE_INDENT);
+    lines.forEach((t, k) =>
+      out.push({
+        h: LINE,
+        keepWithNext: k === lines.length - 1,
+        draw: (x, y) => text(doc, t, x + SEIZURE_INDENT, y, "bold", BODY_PT, ACCENT),
+      })
+    );
+  }
+  return out;
+}
+
+/** The same lines drawn `dx` mm further right. */
+function shift(lines: Line[], dx: number): Line[] {
+  return lines.map((l) => ({ ...l, draw: l.draw && ((x: number, y: number) => l.draw!(x + dx, y)) }));
+}
+
 function sectionHeading(doc: jsPDF, label: string, width: number): Line[] {
   return [
     {
       h: 7,
       keepWithNext: true,
+      // A heading never ends a page: keep room for at least two lines under it.
+      minAfter: 2 * LINE,
       draw: (x, y) => {
         text(doc, label.toUpperCase(), x, y, "bold", 9, ACCENT, 0.4);
         rule(doc, x, y + 4.6, width, RULE, 0.25);
@@ -233,18 +393,18 @@ function sectionHeading(doc: jsPDF, label: string, width: number): Line[] {
 function labelledLines(doc: jsPDF, label: string, body: string, width: number, indent = 0): Line[] {
   setFont(doc, "bold", BODY_PT, INK);
   const head = `${label}: `;
-  const headW = doc.getTextWidth(head);
+  const headW = measure(doc, head);
   setFont(doc, "normal", BODY_PT, INK);
   const words = body.split(/\s+/).filter(Boolean);
   let first = "";
   let k = 0;
   while (k < words.length) {
     const candidate = first ? `${first} ${words[k]}` : words[k];
-    if (doc.getTextWidth(candidate) > width - indent - headW && first) break;
+    if (measure(doc, candidate) > width - indent - headW && first) break;
     first = candidate;
     k++;
   }
-  const rest: string[] = k < words.length ? doc.splitTextToSize(words.slice(k).join(" "), width - indent) : [];
+  const rest: string[] = k < words.length ? wrapText(doc, words.slice(k).join(" "), width - indent) : [];
   return [
     {
       h: LINE,
@@ -269,7 +429,7 @@ function blockLines(doc: jsPDF, blocks: NoteBlock[], width: number): Line[] {
       case "heading": {
         if (prev && prev.kind !== "gap") out.push({ h: 1.6 });
         setFont(doc, "bold", 10.5, INK);
-        const lines: string[] = doc.splitTextToSize(b.text, width);
+        const lines: string[] = wrapText(doc, b.text, width);
         lines.forEach((t, k) =>
           out.push({ h: 5.4, keepWithNext: k === lines.length - 1, draw: (x, y) => text(doc, t, x, y, "bold", 10.5, INK) })
         );
@@ -280,8 +440,8 @@ function blockLines(doc: jsPDF, blocks: NoteBlock[], width: number): Line[] {
         const indent = 4 + b.level * 6;
         const marker = b.kind === "bullet" ? (b.level ? "-" : "•") : b.marker;
         setFont(doc, "normal", BODY_PT, INK);
-        const hang = Math.max(4.5, doc.getTextWidth(marker) + 2);
-        const lines: string[] = doc.splitTextToSize(b.text, width - indent - hang);
+        const hang = Math.max(4.5, measure(doc, marker) + 2);
+        const lines: string[] = wrapText(doc, b.text, width - indent - hang);
         lines.forEach((t, k) =>
           out.push({
             h: LINE,
@@ -298,7 +458,7 @@ function blockLines(doc: jsPDF, blocks: NoteBlock[], width: number): Line[] {
           out.push(...labelledLines(doc, b.label, b.text, width));
         } else {
           setFont(doc, "normal", BODY_PT, INK);
-          const lines: string[] = doc.splitTextToSize(b.text, width);
+          const lines: string[] = wrapText(doc, b.text, width);
           lines.forEach((t) => out.push({ h: LINE, draw: (x, y) => text(doc, t, x, y, "normal", BODY_PT, INK) }));
         }
         break;
@@ -326,7 +486,7 @@ function text(
   align: "left" | "right" = "left"
 ) {
   setFont(doc, style, size, color);
-  doc.text(s, x, y, { baseline: "top", charSpace, align });
+  drawText(doc, s, x, y, { charSpace, align });
 }
 
 function rule(doc: jsPDF, x: number, y: number, w: number, color: RGB, weight: number) {
