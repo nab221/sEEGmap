@@ -329,7 +329,7 @@ export default function Planner() {
             Legend
           </label>
           <label
-            title="Start the PDF with the MDT note page (meeting, previous investigations, discussion, outcome and electrode notes); the schematic follows on its own page"
+            title="Start the PDF with the MDT note page (meeting, seizures, previous investigations, discussion, outcome and electrode notes); the schematic follows on its own page"
             style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
           >
             <input

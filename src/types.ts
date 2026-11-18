@@ -205,6 +205,17 @@ export interface SIAnchor {
 
 export type SIRegionsConfig = Record<string, SIAnchor>;
 
+/** One seizure type in the MDT note: its semiology and how often it happens. */
+export interface MdtSeizure {
+  id: string;
+  /** Short name, e.g. "Habitual" or "Focal to bilateral tonic-clonic". Empty = "Seizure n". */
+  label: string;
+  /** Semiology, as typed or pasted. */
+  description: string;
+  /** Frequency as typed, e.g. "3–4 per month". */
+  frequency: string;
+}
+
 /** The MDT meeting where the plan was discussed. The discussion text itself is `planNotes`. */
 export interface MdtNote {
   /** Meeting name, e.g. "Epilepsy Surgery MDT". Empty = the default name. */
@@ -213,6 +224,8 @@ export interface MdtNote {
   date: string;
   /** Who was present, as typed. */
   attendees: string;
+  /** Seizure types, in the order entered. Printed before the previous investigations. */
+  seizures: MdtSeizure[];
   /** Previous investigations (video-EEG, MRI, PET, neuropsychology…), printed before the discussion. */
   investigations: string;
   /** The agreed outcome / decision. */
