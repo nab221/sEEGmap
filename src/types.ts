@@ -208,8 +208,10 @@ export type SIRegionsConfig = Record<string, SIAnchor>;
 /** One seizure type in the MDT note: its semiology and how often it happens. */
 export interface MdtSeizure {
   id: string;
-  /** Short name, e.g. "Habitual" or "Focal to bilateral tonic-clonic". Empty = "Seizure n". */
+  /** Short name, e.g. "Habitual". Empty = "Seizure n" (with the ILAE type, if one is set). */
   label: string;
+  /** ILAE 2025 seizure type code (see lib/ilae.ts), e.g. "FIC", or "" when not set. */
+  ilaeType: string;
   /** Semiology, as typed or pasted. */
   description: string;
   /** Frequency as typed, e.g. "3–4 per month". */

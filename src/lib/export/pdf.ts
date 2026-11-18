@@ -10,6 +10,7 @@ import {
   parseNoteText,
   pdfSafe,
   seizureTitle,
+  seizureTypeLine,
   type NoteBlock,
 } from "../mdtNote";
 import type { Electrode, MdtNote } from "../../types";
@@ -152,6 +153,12 @@ export function writeMdtNote(doc: jsPDF, { patientLabel, mdt, discussion, electr
     seizures.forEach((sz, i) => {
       if (i > 0) place([{ h: 2.6 }]);
       place(seizureLines(doc, pdfSafe(seizureTitle(sz, i)), pdfSafe(sz.frequency.trim()), width));
+      const typeLine = seizureTypeLine(sz);
+      if (typeLine) {
+        setFont(doc, "normal", 9, MUTED);
+        const lines = wrapText(doc, pdfSafe(`ILAE: ${typeLine}`), width - SEIZURE_INDENT);
+        place(lines.map((t) => ({ h: 4.4, draw: (x, y) => text(doc, t, x + SEIZURE_INDENT, y, "normal", 9, MUTED) })));
+      }
       const desc = parseNoteText(pdfSafe(sz.description));
       place(shift(blockLines(doc, desc, width - SEIZURE_INDENT), SEIZURE_INDENT));
     });

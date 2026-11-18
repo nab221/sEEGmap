@@ -4,6 +4,7 @@
 // from these blocks so they always match.
 
 import type { MdtNote, MdtSeizure } from "../types";
+import { ilaeType, ilaeTypeName } from "./ilae";
 
 export const EMPTY_MDT: MdtNote = { meeting: "", date: "", attendees: "", seizures: [], investigations: "", outcome: "" };
 
@@ -23,6 +24,7 @@ export function normaliseMdt(raw: Partial<MdtNote> | undefined | null): MdtNote 
       .map((sz, i) => ({
         id: str(sz.id) || `seizure-${i + 1}`,
         label: str(sz.label),
+        ilaeType: ilaeType(str(sz.ilaeType)) ? str(sz.ilaeType) : "",
         description: str(sz.description),
         frequency: str(sz.frequency),
       })),
@@ -33,13 +35,21 @@ export function normaliseMdt(raw: Partial<MdtNote> | undefined | null): MdtNote 
 
 /** Seizures with anything typed in them; blank rows are left off the printed note. */
 export function filledSeizures(seizures: MdtSeizure[]): MdtSeizure[] {
-  return seizures.filter((sz) => sz.label.trim() || sz.description.trim() || sz.frequency.trim());
+  return seizures.filter((sz) => sz.label.trim() || sz.ilaeType || sz.description.trim() || sz.frequency.trim());
 }
 
 /** "Seizure 2: Habitual" or "Seizure 2" — `index` is 0-based. */
 export function seizureTitle(sz: MdtSeizure, index: number): string {
-  const label = sz.label.trim();
-  return label ? `Seizure ${index + 1}: ${label}` : `Seizure ${index + 1}`;
+  const name = sz.label.trim() || ilaeTypeName(sz.ilaeType);
+  return name ? `Seizure ${index + 1}: ${name}` : `Seizure ${index + 1}`;
+}
+
+/**
+ * The ILAE type to print on its own line under the title: only when the seizure also has a
+ * name (otherwise the type is already the title). "" for none.
+ */
+export function seizureTypeLine(sz: MdtSeizure): string {
+  return sz.label.trim() ? ilaeTypeName(sz.ilaeType) : "";
 }
 
 /** Meeting name used when none is typed. */
@@ -228,6 +238,7 @@ export function mdtPlainText(mdt: MdtNote, discussion: string): string[] {
     lines.push("", "Seizure semiology and frequency:");
     seizures.forEach((sz, i) => {
       lines.push(`${seizureTitle(sz, i)}${sz.frequency.trim() ? ` — ${sz.frequency.trim()}` : ""}`);
+      if (seizureTypeLine(sz)) lines.push(`ILAE type: ${seizureTypeLine(sz)}`);
       if (sz.description.trim()) lines.push(sz.description.trim());
     });
   }

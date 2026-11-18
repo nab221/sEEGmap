@@ -9,6 +9,7 @@ import {
   parseNoteText,
   pdfSafe,
   seizureTitle,
+  seizureTypeLine,
   applySymbolShortcuts,
 } from "./mdtNote";
 
@@ -89,16 +90,16 @@ describe("isMdtEmpty / mdtPlainText", () => {
     expect(isMdtEmpty(EMPTY_MDT, "  ")).toBe(true);
     expect(isMdtEmpty({ ...EMPTY_MDT, outcome: "x" }, "")).toBe(false);
     expect(isMdtEmpty({ ...EMPTY_MDT, investigations: "MRI: normal" }, "")).toBe(false);
-    const blank = { id: "a", label: " ", description: "", frequency: "" };
+    const blank = { id: "a", label: " ", ilaeType: "", description: "", frequency: "" };
     expect(isMdtEmpty({ ...EMPTY_MDT, seizures: [blank] }, "")).toBe(true);
     expect(isMdtEmpty({ ...EMPTY_MDT, seizures: [{ ...blank, frequency: "daily" }] }, "")).toBe(false);
   });
 
   it("writes a plain-text version with the default meeting name", () => {
     const seizures = [
-      { id: "a", label: "Habitual", description: "Rising sensation, then automatisms", frequency: "3/month" },
-      { id: "b", label: "", description: "", frequency: "" },
-      { id: "c", label: "", description: "Nocturnal FBTCS", frequency: "" },
+      { id: "a", label: "Habitual", ilaeType: "FIC", description: "Rising sensation, then automatisms", frequency: "3/month" },
+      { id: "b", label: "", ilaeType: "", description: "", frequency: "" },
+      { id: "c", label: "", ilaeType: "FBTC", description: "Nocturnal", frequency: "" },
     ];
     expect(
       mdtPlainText({ ...EMPTY_MDT, date: "2026-11-12", seizures, investigations: "MRI: normal", outcome: "Go" }, "Talked")
@@ -107,9 +108,10 @@ describe("isMdtEmpty / mdtPlainText", () => {
       "",
       "Seizure semiology and frequency:",
       "Seizure 1: Habitual — 3/month",
+      "ILAE type: Focal impaired consciousness seizure (FIC)",
       "Rising sensation, then automatisms",
-      "Seizure 2",
-      "Nocturnal FBTCS",
+      "Seizure 2: Focal-to-bilateral tonic-clonic seizure (FBTC)",
+      "Nocturnal",
       "",
       "Previous investigations:",
       "MRI: normal",
@@ -125,14 +127,22 @@ describe("isMdtEmpty / mdtPlainText", () => {
 
 describe("seizures", () => {
   it("numbers seizures and uses the name when given", () => {
-    const sz = { id: "a", label: "  Habitual ", description: "", frequency: "" };
+    const sz = { id: "a", label: "  Habitual ", ilaeType: "", description: "", frequency: "" };
     expect(seizureTitle(sz, 0)).toBe("Seizure 1: Habitual");
     expect(seizureTitle({ ...sz, label: "" }, 2)).toBe("Seizure 3");
   });
 
+  it("titles an unnamed seizure by its ILAE type, and prints the type separately when named", () => {
+    const sz = { id: "a", label: "", ilaeType: "TA", description: "", frequency: "" };
+    expect(seizureTitle(sz, 0)).toBe("Seizure 1: Typical absence seizure (TA)");
+    expect(seizureTypeLine(sz)).toBe("");
+    expect(seizureTypeLine({ ...sz, label: "Habitual" })).toBe("Typical absence seizure (TA)");
+    expect(filledSeizures([sz])).toEqual([sz]);
+  });
+
   it("leaves blank seizures off", () => {
-    const blank = { id: "a", label: "", description: "  ", frequency: "" };
-    const full = { id: "b", label: "", description: "x", frequency: "" };
+    const blank = { id: "a", label: "", ilaeType: "", description: "  ", frequency: "" };
+    const full = { id: "b", label: "", ilaeType: "", description: "x", frequency: "" };
     expect(filledSeizures([blank, full])).toEqual([full]);
   });
 });
@@ -145,7 +155,12 @@ describe("normaliseMdt", () => {
 
   it("repairs malformed seizures from a hand-edited file", () => {
     const raw = { seizures: [null, { label: "A", frequency: 3 }, "x"] } as never;
-    expect(normaliseMdt(raw).seizures).toEqual([{ id: "seizure-1", label: "A", description: "", frequency: "" }]);
+    expect(normaliseMdt(raw).seizures).toEqual([{ id: "seizure-1", label: "A", ilaeType: "", description: "", frequency: "" }]);
+  });
+
+  it("keeps known ILAE types and drops unknown ones", () => {
+    const raw = { seizures: [{ id: "a", ilaeType: "GTC" }, { id: "b", ilaeType: "XYZ" }] } as never;
+    expect(normaliseMdt(raw).seizures.map((s) => s.ilaeType)).toEqual(["GTC", ""]);
   });
 });
 

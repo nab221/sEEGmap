@@ -10,9 +10,11 @@ import {
   formatMdtDate,
   parseNoteText,
   seizureTitle,
+  seizureTypeLine,
   type NoteBlock,
 } from "../lib/mdtNote";
 import type { MdtSeizure } from "../types";
+import { ILAE_GROUPS } from "../lib/ilae";
 
 type LineFormat = "heading" | "bullet" | "numbered";
 
@@ -152,11 +154,11 @@ function SeizureList({ seizures, onChange }: { seizures: MdtSeizure[]; onChange:
     onChange(next);
   };
   const remove = (sz: MdtSeizure) => {
-    const hasText = sz.label.trim() || sz.description.trim() || sz.frequency.trim();
+    const hasText = sz.label.trim() || sz.ilaeType || sz.description.trim() || sz.frequency.trim();
     if (hasText && !window.confirm("Remove this seizure and its description?")) return;
     onChange(seizures.filter((s) => s.id !== sz.id));
   };
-  const add = () => onChange([...seizures, { id: uuid(), label: "", description: "", frequency: "" }]);
+  const add = () => onChange([...seizures, { id: uuid(), label: "", ilaeType: "", description: "", frequency: "" }]);
 
   return (
     <div className="field">
@@ -222,6 +224,11 @@ function SeizureList({ seizures, onChange }: { seizures: MdtSeizure[]; onChange:
               </button>
             </div>
           </div>
+          <IlaeTypeSelect
+            id={`mdt-seizure-type-${sz.id}`}
+            value={sz.ilaeType}
+            onChange={(code) => update(sz.id, { ilaeType: code })}
+          />
           <FormattedField
             id={`mdt-seizure-${sz.id}`}
             label="Semiology"
@@ -235,6 +242,38 @@ function SeizureList({ seizures, onChange }: { seizures: MdtSeizure[]; onChange:
       <button type="button" className="btn btn-sm" onClick={add} style={{ alignSelf: "flex-start" }}>
         + Add seizure
       </button>
+    </div>
+  );
+}
+
+/** Drop-down of ILAE 2025 seizure types, grouped by main class. */
+function IlaeTypeSelect({ id, value, onChange }: { id: string; value: string; onChange: (code: string) => void }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <label
+        htmlFor={id}
+        title="Seizure type per the ILAE 2025 updated classification (Beniczky et al., Epilepsia 2025). Choose the main class when a detail such as consciousness couldn't be determined."
+        style={{ whiteSpace: "nowrap", minWidth: 62 }}
+      >
+        ILAE type
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ flex: 1, minWidth: 0, padding: "7px 9px", color: value ? "var(--ink)" : "var(--muted)" }}
+      >
+        <option value="">Not specified</option>
+        {ILAE_GROUPS.map((group) => (
+          <optgroup key={group.label} label={group.label}>
+            {group.types.map((t) => (
+              <option key={t.code} value={t.code} style={{ color: "var(--ink)" }}>
+                {t.abbr ? `${t.name} (${t.abbr})` : t.name}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
     </div>
   );
 }
@@ -503,6 +542,9 @@ function NotePreview(props: {
                   <b style={{ color: ACCENT, fontSize: 12, textAlign: "right" }}>Frequency: {sym(sz.frequency.trim())}</b>
                 )}
               </div>
+              {seizureTypeLine(sz) && (
+                <div style={{ color: "#606c78", fontSize: 11.5, paddingLeft: 14 }}>ILAE: {seizureTypeLine(sz)}</div>
+              )}
               <div style={{ paddingLeft: 14 }}>
                 <Blocks blocks={parseNoteText(sz.description)} />
               </div>

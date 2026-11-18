@@ -150,8 +150,9 @@ in the clinical report shows which contacts you are recording from.
 - Tick **Legend** (next to the export buttons) to draw a table of electrode names,
   entries and targets beside the figure in the PNG and PDF.
 - **MDT Note** (Planner toolbar) records the MDT where the plan was discussed: meeting
-  name, date, who was present, each seizure type (an optional name, its semiology and
-  its frequency — **+ Add seizure** for as many as needed, reorder with ↑ ↓), previous
+  name, date, who was present, each seizure type (an optional name, its ILAE 2025 type
+  from a drop-down — Beniczky et al., *Epilepsia* 2025, doi:10.1111/epi.18338 — its
+  semiology and its frequency — **+ Add seizure** for as many as needed, reorder with ↑ ↓), previous
   investigations (video-EEG, MRI, PET,
   neuropsychology…), the discussion (paste it straight from the minutes) and the
   outcome / decision, with a live preview of the printed page. Line breaks are kept;
