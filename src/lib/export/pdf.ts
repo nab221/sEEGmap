@@ -7,13 +7,15 @@ import {
   filledSeizures,
   formatMdtDate,
   isMdtEmpty,
+  laterSections,
   parseNoteText,
   pdfSafe,
   seizureTitle,
   seizureTypeLine,
   type NoteBlock,
 } from "../mdtNote";
-import type { Electrode, MdtNote } from "../../types";
+import { asmDose, asmName, asmStatus, asmSummary, filledAsms, historySection, type FactSection } from "../clinical";
+import type { Electrode, MdtAsm, MdtNote } from "../../types";
 
 interface PdfOptions {
   node: HTMLElement;
@@ -89,6 +91,8 @@ interface Line {
   draw?: (x: number, y: number) => void;
   /** Don't let a page break separate this line from the next (headings). */
   keepWithNext?: boolean;
+  /** Room (mm) needed below this line on the same page, e.g. for a section heading's first lines. */
+  minAfter?: number;
 }
 
 interface NoteContent {
@@ -122,7 +126,7 @@ export function writeMdtNote(doc: jsPDF, { patientLabel, mdt, discussion, electr
   const place = (lines: Line[]) => {
     lines.forEach((line, i) => {
       const next = lines[i + 1];
-      const need = line.h + (line.keepWithNext && next ? next.h : 0);
+      const need = line.h + (line.keepWithNext && next ? next.h : 0) + (line.minAfter ?? 0);
       if (flow.y + need > bottom && flow.y > TOP) {
         newPage();
         if (!line.draw) return; // no spacer at the top of a page
@@ -146,6 +150,15 @@ export function writeMdtNote(doc: jsPDF, { patientLabel, mdt, discussion, electr
     place([{ h: 3 }]);
   }
 
+  const placeFacts = (section: FactSection) => {
+    if (!section.facts.length) return;
+    place(sectionHeading(doc, section.heading, width));
+    place(factLines(doc, section, width));
+    place([{ h: 5 }]);
+  };
+
+  placeFacts(historySection(mdt.history));
+
   // Seizure semiology and frequency: one entry per seizure type.
   const seizures = filledSeizures(mdt.seizures);
   if (seizures.length) {
@@ -164,6 +177,26 @@ export function writeMdtNote(doc: jsPDF, { patientLabel, mdt, discussion, electr
     });
     place([{ h: 5 }]);
   }
+
+  // Anti-seizure medication: a drug / dose / status table, then the counts.
+  const asms = filledAsms(mdt.asms);
+  if (asms.length) {
+    place(sectionHeading(doc, "Anti-seizure medication", width));
+    asms.forEach((a, i) => place(asmRow(doc, a, width, i < asms.length - 1)));
+    asmSummary(mdt.asms).forEach((line, i) => {
+      const style = i === 0 ? "normal" : "bold";
+      const color = i === 0 ? MUTED : ACCENT;
+      setFont(doc, style, 9.5, color);
+      const lines = wrapText(doc, pdfSafe(line), width);
+      place([
+        ...(i === 0 ? [{ h: 1.5 }] : []),
+        ...lines.map((t) => ({ h: 4.6, draw: (x: number, y: number) => text(doc, t, x, y, style, 9.5, color) })),
+      ]);
+    });
+    place([{ h: 5 }]);
+  }
+
+  laterSections(mdt).forEach(placeFacts);
 
   // Previous investigations, then the discussion
   const sections: [string, string][] = [
@@ -246,6 +279,56 @@ function addPageNumbers(doc: jsPDF, count: number) {
   }
 }
 
+/** "Label: value" lines; a value's own line breaks start new lines under it. */
+function factLines(doc: jsPDF, section: FactSection, width: number): Line[] {
+  const out: Line[] = [];
+  for (const f of section.facts) {
+    const [first, ...more] = pdfSafe(f.value).split(/\n/);
+    if (f.label) {
+      out.push(...labelledLines(doc, pdfSafe(f.label), first, width));
+    } else {
+      setFont(doc, "normal", BODY_PT, INK);
+      wrapText(doc, first, width).forEach((t) => out.push({ h: LINE, draw: (x, y) => text(doc, t, x, y, "normal", BODY_PT, INK) }));
+    }
+    for (const para of more) {
+      if (!para.trim()) continue;
+      setFont(doc, "normal", BODY_PT, INK);
+      wrapText(doc, para.trim(), width).forEach((t) =>
+        out.push({ h: LINE, draw: (x, y) => text(doc, t, x, y, "normal", BODY_PT, INK) })
+      );
+    }
+  }
+  return out;
+}
+
+/** Column widths of the ASM table, in mm. */
+const ASM_NAME_W = 44;
+const ASM_DOSE_W = 30;
+
+/** One ASM table row: drug (bold), dose and status, each wrapped in its column. */
+function asmRow(doc: jsPDF, a: MdtAsm, width: number, ruleAfter: boolean): Line[] {
+  setFont(doc, "bold", BODY_PT, INK);
+  const name = wrapText(doc, pdfSafe(asmName(a)), ASM_NAME_W - 3);
+  setFont(doc, "normal", BODY_PT, INK);
+  const dose = wrapText(doc, pdfSafe(asmDose(a)), ASM_DOSE_W - 3);
+  const status = wrapText(doc, pdfSafe(asmStatus(a)), width - ASM_NAME_W - ASM_DOSE_W);
+  const n = Math.max(name.length, dose.length, status.length);
+  const rows: Line[] = [];
+  for (let k = 0; k < n; k++) {
+    rows.push({
+      h: LINE,
+      keepWithNext: k < n - 1,
+      draw: (x, y) => {
+        if (name[k]) text(doc, name[k], x, y, "bold", BODY_PT, INK);
+        if (dose[k]) text(doc, dose[k], x + ASM_NAME_W, y, "normal", BODY_PT, INK);
+        if (status[k]) text(doc, status[k], x + ASM_NAME_W + ASM_DOSE_W, y, "normal", BODY_PT, INK);
+      },
+    });
+  }
+  if (ruleAfter) rows.push({ h: 1.8, draw: (x, y) => rule(doc, x, y + 0.6, width, RULE, 0.2) });
+  return rows;
+}
+
 /** Seizure descriptions sit this far in from their title. */
 const SEIZURE_INDENT = 5;
 
@@ -296,6 +379,8 @@ function sectionHeading(doc: jsPDF, label: string, width: number): Line[] {
     {
       h: 7,
       keepWithNext: true,
+      // A heading never ends a page: keep room for at least two lines under it.
+      minAfter: 2 * LINE,
       draw: (x, y) => {
         text(doc, label.toUpperCase(), x, y, "bold", 9, ACCENT, 0.4);
         rule(doc, x, y + 4.6, width, RULE, 0.25);

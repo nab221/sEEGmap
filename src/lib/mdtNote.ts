@@ -5,8 +5,59 @@
 
 import type { MdtNote, MdtSeizure } from "../types";
 import { ilaeType, ilaeTypeName } from "./ilae";
+import {
+  DIAGNOSES,
+  EMPTY_CHECKLIST,
+  EMPTY_HISTORY,
+  EMPTY_SAFETY,
+  EMPTY_SOCIAL,
+  TREATMENTS,
+  asmDose,
+  asmName,
+  asmStatus,
+  asmSummary,
+  diagnosesSection,
+  filledAsms,
+  historySection,
+  normaliseAsms,
+  normaliseChecklist,
+  normaliseHistory,
+  normaliseSafety,
+  normaliseSocial,
+  safetySection,
+  sectionPlainText,
+  socialSection,
+  treatmentsSection,
+  type FactSection,
+} from "./clinical";
 
-export const EMPTY_MDT: MdtNote = { meeting: "", date: "", attendees: "", seizures: [], investigations: "", outcome: "" };
+export const EMPTY_MDT: MdtNote = {
+  meeting: "",
+  date: "",
+  attendees: "",
+  history: EMPTY_HISTORY,
+  seizures: [],
+  asms: [],
+  treatments: EMPTY_CHECKLIST,
+  safety: EMPTY_SAFETY,
+  diagnoses: EMPTY_CHECKLIST,
+  social: EMPTY_SOCIAL,
+  investigations: "",
+  outcome: "",
+};
+
+/**
+ * The sections printed after the seizures and ASMs, in order, leaving out empty ones:
+ * non-drug treatments, status epilepticus and safety, other diagnoses, psychiatric and social.
+ */
+export function laterSections(mdt: MdtNote): FactSection[] {
+  return [
+    treatmentsSection(mdt.treatments),
+    safetySection(mdt.safety),
+    diagnosesSection(mdt.diagnoses),
+    socialSection(mdt.social),
+  ].filter((sec) => sec.facts.length > 0);
+}
 
 /**
  * An MDT note read from storage or a .seegmap file, with every field present: older saves
@@ -19,6 +70,12 @@ export function normaliseMdt(raw: Partial<MdtNote> | undefined | null): MdtNote 
     meeting: str(raw?.meeting),
     date: str(raw?.date),
     attendees: str(raw?.attendees),
+    history: normaliseHistory(raw?.history),
+    asms: normaliseAsms(raw?.asms),
+    treatments: normaliseChecklist(raw?.treatments, TREATMENTS),
+    safety: normaliseSafety(raw?.safety),
+    diagnoses: normaliseChecklist(raw?.diagnoses, DIAGNOSES),
+    social: normaliseSocial(raw?.social),
     seizures: seizures
       .filter((sz): sz is MdtSeizure => !!sz && typeof sz === "object")
       .map((sz, i) => ({
@@ -145,6 +202,9 @@ export function isMdtEmpty(mdt: MdtNote, discussion: string): boolean {
   return (
     !discussion.trim() &&
     filledSeizures(mdt.seizures).length === 0 &&
+    historySection(mdt.history).facts.length === 0 &&
+    filledAsms(mdt.asms).length === 0 &&
+    laterSections(mdt).length === 0 &&
     !mdt.investigations.trim() &&
     !mdt.outcome.trim() &&
     !mdt.attendees.trim() &&
@@ -233,6 +293,7 @@ export function mdtPlainText(mdt: MdtNote, discussion: string): string[] {
   const head = [mdt.meeting.trim() || DEFAULT_MEETING, formatMdtDate(mdt.date)].filter(Boolean).join(" — ");
   lines.push(head);
   if (mdt.attendees.trim()) lines.push(`Present: ${mdt.attendees.trim()}`);
+  lines.push(...sectionPlainText(historySection(mdt.history)));
   const seizures = filledSeizures(mdt.seizures);
   if (seizures.length) {
     lines.push("", "Seizure semiology and frequency:");
@@ -242,6 +303,13 @@ export function mdtPlainText(mdt: MdtNote, discussion: string): string[] {
       if (sz.description.trim()) lines.push(sz.description.trim());
     });
   }
+  const asms = filledAsms(mdt.asms);
+  if (asms.length) {
+    lines.push("", "Anti-seizure medication:");
+    asms.forEach((a) => lines.push([asmName(a), asmDose(a), asmStatus(a)].filter(Boolean).join(" — ")));
+    lines.push(...asmSummary(mdt.asms));
+  }
+  laterSections(mdt).forEach((sec) => lines.push(...sectionPlainText(sec)));
   if (mdt.investigations.trim()) lines.push("", "Previous investigations:", mdt.investigations.trim());
   lines.push("", "Discussion:", discussion.trim() || "(none)");
   if (mdt.outcome.trim()) lines.push("", "Outcome / decision:", mdt.outcome.trim());

@@ -218,6 +218,53 @@ export interface MdtSeizure {
   frequency: string;
 }
 
+/** Clinical history relevant to epilepsy surgery. Ages are in years, as typed. */
+export interface MdtHistory {
+  ageAtMdt: string;
+  ageAtOnset: string;
+  handedness: "" | "right" | "left" | "ambidextrous";
+  /** Codes from RISK_FACTORS (lib/clinical.ts). */
+  riskFactors: string[];
+  notes: string;
+}
+
+/** One anti-seizure medication, current or previous. */
+export interface MdtAsm {
+  id: string;
+  /** Code from ASM_LIST (lib/clinical.ts); "other" uses `otherName`. "" = not chosen yet. */
+  drug: string;
+  otherName: string;
+  /** Total daily dose as typed, e.g. "1500". */
+  dose: string;
+  unit: "mg/day" | "mg/kg/day";
+  status: "current" | "previous";
+  /** Previous ASMs only. "" = not known. */
+  reasonStopped: "" | "inefficacy" | "adverse" | "both" | "other";
+  note: string;
+}
+
+/** Ticked options from a fixed list, plus free-text notes. */
+export interface MdtChecklist {
+  options: string[];
+  notes: string;
+}
+
+export interface MdtSafety {
+  statusEpilepticus: "" | "yes" | "no";
+  statusDetails: string;
+  injuries: string;
+  /** Codes from SUDEP_RISKS (lib/clinical.ts). */
+  sudepRisks: string[];
+  notes: string;
+}
+
+export interface MdtSocial {
+  psychiatric: string;
+  driving: string;
+  employment: string;
+  goals: string;
+}
+
 /** The MDT meeting where the plan was discussed. The discussion text itself is `planNotes`. */
 export interface MdtNote {
   /** Meeting name, e.g. "Epilepsy Surgery MDT". Empty = the default name. */
@@ -226,8 +273,17 @@ export interface MdtNote {
   date: string;
   /** Who was present, as typed. */
   attendees: string;
+  history: MdtHistory;
   /** Seizure types, in the order entered. Printed before the previous investigations. */
   seizures: MdtSeizure[];
+  /** Anti-seizure medications, current and previous. */
+  asms: MdtAsm[];
+  /** Non-drug treatments (codes from TREATMENTS). */
+  treatments: MdtChecklist;
+  safety: MdtSafety;
+  /** Other relevant diagnoses (codes from DIAGNOSES). */
+  diagnoses: MdtChecklist;
+  social: MdtSocial;
   /** Previous investigations (video-EEG, MRI, PET, neuropsychology…), printed before the discussion. */
   investigations: string;
   /** The agreed outcome / decision. */

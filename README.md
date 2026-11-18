@@ -149,8 +149,15 @@ in the clinical report shows which contacts you are recording from.
   need to keep.
 - Tick **Legend** (next to the export buttons) to draw a table of electrode names,
   entries and targets beside the figure in the PNG and PDF.
-- **MDT Note** (Planner toolbar) records the MDT where the plan was discussed: meeting
-  name, date, who was present, each seizure type (an optional name, its ILAE 2025 type
+- **MDT Note** (Planner toolbar) records the MDT where the plan was discussed, in
+  collapsible sections. Phase 1 details use fixed lists where possible, so notes stay
+  consistent for audit: clinical history (age at MDT and at onset, with the epilepsy
+  duration worked out, handedness, early risk factors); anti-seizure medication (drug from
+  a list, total daily dose, current or previous and why stopped, with a drug-resistance
+  line when two or more were stopped for lack of efficacy); non-drug treatments (VNS, DBS,
+  RNS, diet, previous surgery); status epilepticus, injuries and SUDEP risk factors; other
+  relevant diagnoses; and psychiatric and social history (driving, work, the patient's
+  goals). It also holds the meeting name, date, who was present, each seizure type (an optional name, its ILAE 2025 type
   from a drop-down — Beniczky et al., *Epilepsia* 2025, doi:10.1111/epi.18338 — its
   semiology and its frequency — **+ Add seizure** for as many as needed, reorder with ↑ ↓), previous
   investigations (video-EEG, MRI, PET,

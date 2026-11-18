@@ -7,22 +7,34 @@ import {
   SYMBOL_SHORTCUTS,
   applySymbolShortcuts as sym,
   filledSeizures,
+  laterSections,
   formatMdtDate,
   parseNoteText,
   seizureTitle,
   seizureTypeLine,
   type NoteBlock,
 } from "../lib/mdtNote";
-import type { MdtSeizure } from "../types";
+import type { MdtNote, MdtSeizure } from "../types";
+import {
+  AsmList,
+  DiagnosisFields,
+  EditorSection,
+  HistoryFields,
+  SafetyFields,
+  SocialFields,
+  TreatmentFields,
+} from "./MdtClinicalFields";
+import { asmDose, asmName, asmStatus, asmSummary, filledAsms, historySection, type FactSection } from "../lib/clinical";
 import { ILAE_GROUPS } from "../lib/ilae";
 
 type LineFormat = "heading" | "bullet" | "numbered";
 
 /**
- * The MDT note editor: meeting, date, who was present, seizure types (semiology and
- * frequency), previous investigations, the
- * discussion (usually pasted from the MDT minutes) and the outcome, with a live preview
- * of the PDF note page.
+ * The MDT note editor, in collapsible sections: meeting, date and who was present;
+ * clinical history; seizure types (semiology and frequency); anti-seizure medication;
+ * non-drug treatments; status epilepticus and safety; other diagnoses; psychiatric and
+ * social history; previous investigations; and the discussion (usually pasted from the
+ * MDT minutes) and outcome. A live preview of the PDF note page sits beside it.
  */
 export default function MdtNotePanel({ onClose }: { onClose: () => void }) {
   const mdt = useStore((s) => s.mdt);
@@ -85,38 +97,62 @@ export default function MdtNotePanel({ onClose }: { onClose: () => void }) {
               placeholder="e.g. Neurosurgery, Neurology, Neurophysiology, Neuropsychology, Neuroradiology"
             />
           </div>
-          <SeizureList seizures={mdt.seizures} onChange={(seizures) => setMdt({ seizures })} />
-          <FormattedField
-            id="mdt-investigations"
-            label="Previous investigations"
-            value={mdt.investigations}
-            onChange={(v) => setMdt({ investigations: v })}
-            placeholder={"Video-EEG: …\nMRI: …\nPET: …\nNeuropsychology: …"}
-            rows={6}
-          />
-          <FormattedField
-            id="mdt-discussion"
-            label="Discussion"
-            value={planNotes}
-            onChange={setPlanNotes}
-            placeholder={"Paste the MDT discussion here.\n\nHypotheses:\n- Right mesial temporal onset…"}
-            rows={10}
-            hint={
-              <>
-                Line breaks are kept. A short line ending in “:” or starting with “#” becomes a heading; lines starting
-                with “-” or “•” become bullets and “1.” a numbered list; “Label: text” prints the label in bold. Typed
-                shortcuts such as <Typed>-&gt;</Typed> and <Typed>&gt;=</Typed> print as → and ≥; Ω Symbols lists them all.
-              </>
-            }
-          />
-          <FormattedField
-            id="mdt-outcome"
-            label="Outcome / decision"
-            value={mdt.outcome}
-            onChange={(v) => setMdt({ outcome: v })}
-            placeholder="e.g. Proceed to right-sided SEEG exploration as per the attached schematic."
-            rows={3}
-          />
+          <EditorSection title="Clinical history">
+            <HistoryFields value={mdt.history} onChange={(patch) => setMdt({ history: { ...mdt.history, ...patch } })} />
+          </EditorSection>
+          <EditorSection title="Seizure semiology and frequency" count={filledSeizures(mdt.seizures).length}>
+            <SeizureList seizures={mdt.seizures} onChange={(seizures) => setMdt({ seizures })} />
+          </EditorSection>
+          <EditorSection title="Anti-seizure medication" count={filledAsms(mdt.asms).length}>
+            <AsmList asms={mdt.asms} onChange={(asms) => setMdt({ asms })} />
+          </EditorSection>
+          <EditorSection title="Non-drug treatments">
+            <TreatmentFields value={mdt.treatments} onChange={(patch) => setMdt({ treatments: { ...mdt.treatments, ...patch } })} />
+          </EditorSection>
+          <EditorSection title="Status epilepticus and safety">
+            <SafetyFields value={mdt.safety} onChange={(patch) => setMdt({ safety: { ...mdt.safety, ...patch } })} />
+          </EditorSection>
+          <EditorSection title="Other relevant diagnoses">
+            <DiagnosisFields value={mdt.diagnoses} onChange={(patch) => setMdt({ diagnoses: { ...mdt.diagnoses, ...patch } })} />
+          </EditorSection>
+          <EditorSection title="Psychiatric and social history">
+            <SocialFields value={mdt.social} onChange={(patch) => setMdt({ social: { ...mdt.social, ...patch } })} />
+          </EditorSection>
+          <EditorSection title="Previous investigations">
+            <FormattedField
+              id="mdt-investigations"
+              label="Investigations"
+              value={mdt.investigations}
+              onChange={(v) => setMdt({ investigations: v })}
+              placeholder={"Video-EEG: …\nMRI: …\nPET: …\nNeuropsychology: …"}
+              rows={6}
+            />
+          </EditorSection>
+          <EditorSection title="Discussion and outcome">
+            <FormattedField
+              id="mdt-discussion"
+              label="Discussion"
+              value={planNotes}
+              onChange={setPlanNotes}
+              placeholder={"Paste the MDT discussion here.\n\nHypotheses:\n- Right mesial temporal onset…"}
+              rows={10}
+              hint={
+                <>
+                  Line breaks are kept. A short line ending in “:” or starting with “#” becomes a heading; lines starting
+                  with “-” or “•” become bullets and “1.” a numbered list; “Label: text” prints the label in bold. Typed
+                  shortcuts such as <Typed>-&gt;</Typed> and <Typed>&gt;=</Typed> print as → and ≥; Ω Symbols lists them all.
+                </>
+              }
+            />
+            <FormattedField
+              id="mdt-outcome"
+              label="Outcome / decision"
+              value={mdt.outcome}
+              onChange={(v) => setMdt({ outcome: v })}
+              placeholder="e.g. Proceed to right-sided SEEG exploration as per the attached schematic."
+              rows={3}
+            />
+          </EditorSection>
         </div>
 
         {/* Preview */}
@@ -126,13 +162,8 @@ export default function MdtNotePanel({ onClose }: { onClose: () => void }) {
           </span>
           <NotePreview
             patientLabel={patientLabel}
-            meeting={mdt.meeting}
-            date={mdt.date}
-            attendees={mdt.attendees}
-            seizures={mdt.seizures}
-            investigations={mdt.investigations}
+            mdt={mdt}
             discussion={planNotes}
-            outcome={mdt.outcome}
             electrodeNotes={[...electrodes]
               .sort((a, b) => a.order - b.order)
               .filter((e) => e.notes.trim())
@@ -162,7 +193,6 @@ function SeizureList({ seizures, onChange }: { seizures: MdtSeizure[]; onChange:
 
   return (
     <div className="field">
-      <label>Seizure semiology and frequency</label>
       {seizures.map((sz, i) => (
         <div
           key={sz.id}
@@ -491,20 +521,28 @@ const ACCENT = "#1f5f8b";
 /** On-screen approximation of the PDF note page (same blocks, same order). */
 function NotePreview(props: {
   patientLabel: string;
-  meeting: string;
-  date: string;
-  attendees: string;
-  seizures: MdtSeizure[];
-  investigations: string;
+  mdt: MdtNote;
   discussion: string;
-  outcome: string;
   electrodeNotes: { name: string; notes: string }[];
 }) {
-  const seizures = filledSeizures(props.seizures);
-  const investigations = parseNoteText(props.investigations);
+  const { mdt } = props;
+  const seizures = filledSeizures(mdt.seizures);
+  const history = historySection(mdt.history);
+  const asms = filledAsms(mdt.asms);
+  const later = laterSections(mdt);
+  const investigations = parseNoteText(mdt.investigations);
   const discussion = parseNoteText(props.discussion);
-  const outcome = parseNoteText(props.outcome);
-  const date = formatMdtDate(props.date);
+  const outcome = parseNoteText(mdt.outcome);
+  const date = formatMdtDate(mdt.date);
+  const empty =
+    history.facts.length === 0 &&
+    seizures.length === 0 &&
+    asms.length === 0 &&
+    later.length === 0 &&
+    investigations.length === 0 &&
+    discussion.length === 0 &&
+    outcome.length === 0 &&
+    props.electrodeNotes.length === 0;
   return (
     <div
       style={{
@@ -522,15 +560,16 @@ function NotePreview(props: {
       {props.patientLabel.trim() && (
         <div style={{ textAlign: "right", fontWeight: 700, fontSize: 11, marginBottom: 6 }}>{props.patientLabel.trim()}</div>
       )}
-      <div style={{ fontWeight: 700, fontSize: 18, lineHeight: 1.25 }}>{sym(props.meeting.trim() || DEFAULT_MEETING)}</div>
+      <div style={{ fontWeight: 700, fontSize: 18, lineHeight: 1.25 }}>{sym(mdt.meeting.trim() || DEFAULT_MEETING)}</div>
       {date && <div style={{ color: "#606c78", fontSize: 13 }}>{date}</div>}
       <div style={{ height: 2, background: ACCENT, margin: "8px 0 10px" }} />
-      {props.attendees.trim() && (
+      {mdt.attendees.trim() && (
         <p style={{ margin: "0 0 10px" }}>
           <b>Present: </b>
-          {sym(props.attendees.trim().replace(/\s*\n\s*/g, ", "))}
+          {sym(mdt.attendees.trim().replace(/\s*\n\s*/g, ", "))}
         </p>
       )}
+      <FactsPreview section={history} />
       {seizures.length > 0 && (
         <>
           <SectionHeading>Seizure semiology and frequency</SectionHeading>
@@ -553,6 +592,31 @@ function NotePreview(props: {
           <div style={{ height: 6 }} />
         </>
       )}
+      {asms.length > 0 && (
+        <>
+          <SectionHeading>Anti-seizure medication</SectionHeading>
+          <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
+            <tbody>
+              {asms.map((a) => (
+                <tr key={a.id} style={{ borderBottom: "1px solid #d0d8e0" }}>
+                  <td style={{ fontWeight: 700, padding: "2px 8px 2px 0", whiteSpace: "nowrap" }}>{sym(asmName(a))}</td>
+                  <td style={{ padding: "2px 8px", whiteSpace: "nowrap" }}>{asmDose(a)}</td>
+                  <td style={{ padding: "2px 0 2px 8px" }}>{sym(asmStatus(a))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {asmSummary(mdt.asms).map((line, i) => (
+            <div key={line} style={{ marginTop: i ? 0 : 4, fontWeight: i ? 700 : 400, color: i ? ACCENT : "#606c78" }}>
+              {line}
+            </div>
+          ))}
+          <div style={{ height: 6 }} />
+        </>
+      )}
+      {later.map((section) => (
+        <FactsPreview key={section.heading} section={section} />
+      ))}
       {investigations.length > 0 && (
         <>
           <SectionHeading>Previous investigations</SectionHeading>
@@ -587,11 +651,27 @@ function NotePreview(props: {
           ))}
         </>
       )}
-      {seizures.length === 0 && investigations.length === 0 && discussion.length === 0 && outcome.length === 0 && props.electrodeNotes.length === 0 && (
+      {empty && (
         <p style={{ color: "#97a2b3", fontStyle: "italic", margin: "8px 0 0" }}>
-          The seizures, investigations, discussion and outcome will appear here.
+          The history, seizures, medication, investigations, discussion and outcome will appear here.
         </p>
       )}
+    </div>
+  );
+}
+
+/** A section of "Label: value" lines, as on the PDF. Nothing when the section is empty. */
+function FactsPreview({ section }: { section: FactSection }) {
+  if (!section.facts.length) return null;
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <SectionHeading>{section.heading}</SectionHeading>
+      {section.facts.map((f, i) => (
+        <div key={i} style={{ whiteSpace: "pre-wrap" }}>
+          {f.label && <b>{f.label}: </b>}
+          {sym(f.value)}
+        </div>
+      ))}
     </div>
   );
 }
